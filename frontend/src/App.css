@@ -280,7 +280,7 @@ button:hover {
 }
 
 .calendar-card .fc {
-  min-height: 560px;
+  min-height: 0;
 }
 
 .admin-grid {
@@ -351,10 +351,6 @@ button:hover {
     padding: 8px;
   }
 
-  .calendar-card .fc {
-    min-height: 420px;
-  }
-
   .calendar-toolbar {
     flex-direction: column;
     align-items: stretch;
@@ -401,6 +397,27 @@ button:hover {
   .fc .fc-daygrid-event .fc-event-time {
     font-size: 0.72rem;
     line-height: 1.1;
+  }
+
+
+  .fc .fc-dayGridMonth-view .fc-daygrid-dot-event {
+    display: block;
+    padding: 2px 4px;
+  }
+
+  .fc .fc-dayGridMonth-view .fc-daygrid-event-dot {
+    display: none;
+  }
+
+  .fc .fc-dayGridMonth-view .fc-daygrid-event .fc-event-time,
+  .fc .fc-dayGridMonth-view .fc-daygrid-event .fc-event-title {
+    display: block;
+    line-height: 1.15;
+  }
+
+  .fc .fc-dayGridMonth-view .fc-daygrid-event .fc-event-title {
+    margin-top: 2px;
+    padding-left: 0;
   }
 
   .fc .fc-list,

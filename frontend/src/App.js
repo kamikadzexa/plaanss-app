@@ -808,9 +808,10 @@ function App() {
             select={handleDateSelect}
             dateClick={handleDateClick}
             eventClick={handleEventClick}
-            height={isMobile ? "auto" : "calc(100vh - 210px)"}
-            expandRows={!isMobile}
-            dayMaxEventRows={isMobile ? 2 : 4}
+            height="auto"
+            contentHeight="auto"
+            expandRows={false}
+            dayMaxEventRows={false}
             fixedWeekCount={false}
           />
         </section>
