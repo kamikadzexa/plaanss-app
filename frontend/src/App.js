@@ -799,7 +799,7 @@ function App() {
             events={eventsForCalendar}
             eventOrder="start,title"
             displayEventTime
-            displayEventEnd={!isMobile}
+            displayEventEnd={!isMobile || calendarView === "listWeek"}
             eventTimeFormat={{
               hour: "2-digit",
               minute: "2-digit",

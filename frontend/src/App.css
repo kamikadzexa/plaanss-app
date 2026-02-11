@@ -254,6 +254,24 @@ button:hover {
   font-size: clamp(0.74rem, 0.62rem + 0.3vw, 1rem);
 }
 
+
+.fc .fc-daygrid-dot-event,
+.fc .fc-daygrid-dot-event:hover {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 2px 6px;
+}
+
+.fc .fc-daygrid-dot-event .fc-event-time,
+.fc .fc-daygrid-dot-event .fc-event-title {
+  white-space: normal;
+}
+
+.fc .fc-daygrid-dot-event .fc-event-title {
+  overflow: visible;
+}
+
 @media (min-width: 769px) {
   .fc .fc-weekRow-view .fc-daygrid-day-events {
     margin-top: 8px;
@@ -451,4 +469,20 @@ button:hover {
     padding-left: 10px;
     padding-right: 10px;
   }
+
+
+  .fc .fc-listWeek-view .fc-list-event td {
+    display: block;
+    width: 100%;
+  }
+
+  .fc .fc-listWeek-view .fc-list-event-time {
+    padding-bottom: 2px;
+    white-space: normal;
+  }
+
+  .fc .fc-listWeek-view .fc-list-event-title {
+    white-space: normal;
+  }
+
 }
