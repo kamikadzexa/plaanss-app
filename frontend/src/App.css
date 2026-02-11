@@ -508,7 +508,7 @@ button:hover {
   .fc .fc-listWeek-view .fc-list-table {
     table-layout: fixed;
     border-collapse: separate;
-    border-spacing: 0 8px;
+    border-spacing: 0 12px;
   }
 
   .fc .fc-listWeek-view .fc-list-event > td {
@@ -522,10 +522,15 @@ button:hover {
 
   .fc .fc-listWeek-view .fc-list-event {
     display: block;
+    width: 100%;
     border: 1px solid #dce3f4;
     border-radius: 10px;
     background: #f9fbff;
     overflow: hidden;
+  }
+
+  .fc .fc-listWeek-view .fc-list-event > td + td {
+    padding-top: 6px;
   }
 
   .fc .fc-listWeek-view .fc-list-event-time {
@@ -538,7 +543,7 @@ button:hover {
     white-space: nowrap;
     font-size: 1rem;
     font-weight: 600;
-    padding: 8px 10px 4px;
+    padding: 10px 12px 6px;
   }
 
   .fc .fc-listWeek-view .fc-list-event-time::before {
@@ -555,7 +560,7 @@ button:hover {
     white-space: normal;
     text-align: center;
     font-size: 1rem;
-    padding: 2px 12px 10px;
+    padding: 4px 14px 12px;
   }
 
   .fc .fc-listWeek-view .fc-list-event-title a {
