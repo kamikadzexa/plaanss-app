@@ -506,23 +506,39 @@ button:hover {
 
 
   .fc .fc-listWeek-view .fc-list-table {
-    table-layout: auto;
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0 8px;
   }
 
   .fc .fc-listWeek-view .fc-list-event > td {
     border: none;
-    vertical-align: top;
+    display: block;
+    width: 100%;
+    padding-top: 0;
+    padding-bottom: 0;
+    text-align: center;
+  }
+
+  .fc .fc-listWeek-view .fc-list-event {
+    display: block;
+    border: 1px solid #dce3f4;
+    border-radius: 10px;
+    background: #f9fbff;
+    overflow: hidden;
   }
 
   .fc .fc-listWeek-view .fc-list-event-time {
-    width: 1%;
-    min-width: 74px;
+    width: 100%;
+    min-width: 0;
     display: inline-flex;
+    justify-content: center;
     align-items: center;
     gap: 6px;
     white-space: nowrap;
-    padding-right: 10px;
     font-size: 1rem;
+    font-weight: 600;
+    padding: 8px 10px 4px;
   }
 
   .fc .fc-listWeek-view .fc-list-event-time::before {
@@ -537,9 +553,9 @@ button:hover {
   .fc .fc-listWeek-view .fc-list-event-title {
     min-width: 0;
     white-space: normal;
-    padding-left: 8px;
-    text-align: left;
+    text-align: center;
     font-size: 1rem;
+    padding: 2px 12px 10px;
   }
 
   .fc .fc-listWeek-view .fc-list-event-title a {
@@ -553,6 +569,7 @@ button:hover {
 
   .fc .fc-listWeek-view .fc-list-day-cushion {
     font-size: 1rem;
+    text-align: center;
   }
 
   .fc .fc-listWeek-view .event-status-live .fc-list-event-time::before {
