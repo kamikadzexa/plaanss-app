@@ -52,6 +52,15 @@ input {
   font-size: 1rem;
 }
 
+textarea {
+  border: 1px solid #cdd4e5;
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 1rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
 button {
   border: none;
   border-radius: 10px;
@@ -146,11 +155,24 @@ button:hover {
   font-size: 0.9rem;
 }
 
+.create-event-button {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #1ba24a;
+  font-size: 1.4rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.create-event-button:hover {
+  background: #168a3e;
+}
+
 .event-form {
   border: 1px solid #dce3f4;
   border-radius: 12px;
   padding: 14px;
-  margin-bottom: 16px;
   background: #f9fbff;
 }
 
@@ -169,6 +191,50 @@ button:hover {
   margin-top: 12px;
   display: flex;
   gap: 10px;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(9, 17, 40, 0.55);
+  display: grid;
+  place-items: center;
+  z-index: 50;
+  padding: 16px;
+}
+
+.modal-card {
+  width: min(760px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  background: #fff;
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 26px 56px rgba(10, 17, 40, 0.35);
+}
+
+.modal-card h3,
+.modal-card h4 {
+  margin-top: 0;
+}
+
+.event-time-row {
+  margin: 4px 0;
+  color: #4b546a;
+}
+
+.event-description-empty {
+  color: #667085;
+}
+
+.event-description-rich p {
+  margin: 8px 0;
+  white-space: pre-wrap;
+}
+
+.event-description-rich a {
+  color: #2350db;
+  text-decoration: underline;
 }
 
 .fc .fc-toolbar.fc-header-toolbar {
@@ -258,6 +324,10 @@ button:hover {
 
   .event-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .modal-card {
+    padding: 14px;
   }
 
   .view-switcher {

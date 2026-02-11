@@ -39,6 +39,72 @@ const getTimePart = (value, fallback = "09:00") => {
   return value.split("T")[1].slice(0, 5);
 };
 
+const formatDateTimeForInput = (value) => {
+  if (!value) {
+    return { startDate: "", startTime: "09:00" };
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return {
+      startDate: getDatePart(value),
+      startTime: getTimePart(value),
+    };
+  }
+
+  const offset = parsed.getTimezoneOffset() * 60000;
+  const local = new Date(parsed.getTime() - offset).toISOString();
+
+  return {
+    startDate: local.slice(0, 10),
+    startTime: local.slice(11, 16),
+  };
+};
+
+const getDurationMinutes = (start, end) => {
+  const startMs = Date.parse(start);
+  const endMs = Date.parse(end);
+
+  if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs <= startMs) {
+    return "60";
+  }
+
+  return `${Math.max(5, Math.round((endMs - startMs) / 60000))}`;
+};
+
+function LinkifiedText({ text }) {
+  if (!text) {
+    return <p className="event-description-empty">No description provided.</p>;
+  }
+
+  const lines = text.split("\n");
+  const urlPattern = /(https?:\/\/[^\s]+)/g;
+
+  return (
+    <div className="event-description-rich">
+      {lines.map((line, lineIndex) => {
+        const chunks = line.split(urlPattern);
+
+        return (
+          <p key={`${line}-${lineIndex}`}>
+            {chunks.map((chunk, chunkIndex) => {
+              if (/^https?:\/\//.test(chunk)) {
+                return (
+                  <a key={`${chunk}-${chunkIndex}`} href={chunk} target="_blank" rel="noreferrer">
+                    {chunk}
+                  </a>
+                );
+              }
+
+              return <span key={`${chunk}-${chunkIndex}`}>{chunk}</span>;
+            })}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 function App() {
   const [token, setToken] = useState(localStorage.getItem("token") || "");
   const [user, setUser] = useState(null);
@@ -53,7 +119,10 @@ function App() {
   const calendarRef = useRef(null);
   const [isMobile, setIsMobile] = useState(getInitialIsMobile);
   const [calendarView, setCalendarView] = useState(isMobile ? "dayGridDay" : "dayGridMonth");
+
+  const [eventDialogMode, setEventDialogMode] = useState(null);
   const [eventForm, setEventForm] = useState(blankEventForm);
+  const [selectedEvent, setSelectedEvent] = useState(null);
 
   const authHeader = useMemo(
     () => ({
@@ -231,43 +300,66 @@ function App() {
     }
   };
 
-  const createEvent = async (draftEvent) => {
-    try {
-      const response = await fetch(`${API_BASE}/events`, {
-        method: "POST",
-        headers: authHeader,
-        body: JSON.stringify(draftEvent),
-      });
+  const openCreateDialog = (startValue) => {
+    const initial = startValue
+      ? {
+          ...blankEventForm,
+          startDate: getDatePart(startValue),
+          startTime: getTimePart(startValue, "09:00"),
+        }
+      : blankEventForm;
 
-      const data = await parseJsonSafe(response);
-
-      if (!response.ok) {
-        throw new Error(data.error || "Could not create event.");
-      }
-
-      setEvents((current) => [...current, data.event]);
-      setError("");
-      setEventForm(blankEventForm);
-    } catch (eventError) {
-      setError(eventError.message);
-    }
+    setEventForm(initial);
+    setEventDialogMode("create");
   };
 
-  const prefillEventForm = (startValue) => {
-    setEventForm((current) => ({
-      ...current,
-      startDate: getDatePart(startValue),
-      startTime: getTimePart(startValue, current.startTime || "09:00"),
-    }));
+  const closeEventDialog = () => {
+    setEventDialogMode(null);
+    setEventForm(blankEventForm);
   };
 
   const handleDateSelect = (selectionInfo) => {
-    prefillEventForm(selectionInfo.startStr);
+    openCreateDialog(selectionInfo.startStr);
     selectionInfo.view.calendar.unselect();
   };
 
   const handleDateClick = (dateInfo) => {
-    prefillEventForm(dateInfo.dateStr);
+    openCreateDialog(dateInfo.dateStr);
+  };
+
+  const createEvent = async (draftEvent) => {
+    const response = await fetch(`${API_BASE}/events`, {
+      method: "POST",
+      headers: authHeader,
+      body: JSON.stringify(draftEvent),
+    });
+
+    const data = await parseJsonSafe(response);
+
+    if (!response.ok) {
+      throw new Error(data.error || "Could not create event.");
+    }
+
+    setEvents((current) => [...current, data.event]);
+  };
+
+  const updateEvent = async (eventId, draftEvent) => {
+    const response = await fetch(`${API_BASE}/events/${eventId}`, {
+      method: "PUT",
+      headers: authHeader,
+      body: JSON.stringify(draftEvent),
+    });
+
+    const data = await parseJsonSafe(response);
+
+    if (!response.ok) {
+      throw new Error(data.error || "Could not update event.");
+    }
+
+    setEvents((current) =>
+      current.map((entry) => (`${entry.id}` === `${eventId}` ? data.event : entry))
+    );
+    setSelectedEvent(data.event);
   };
 
   const handleEventFormSubmit = async (event) => {
@@ -298,43 +390,61 @@ function App() {
 
     const endDateTime = new Date(startDateTime.getTime() + duration * 60000);
 
-    await createEvent({
+    const payload = {
       title,
       start: startDateTime.toISOString(),
       end: endDateTime.toISOString(),
       allDay: false,
-      notes: eventForm.notes.trim(),
-    });
-  };
-
-  const handleEventClick = async (clickInfo) => {
-    const eventId = clickInfo.event.id;
-    const shouldDelete = window.confirm(
-      `Delete "${clickInfo.event.title}"?\nPress Cancel to keep it.`
-    );
-
-    if (!shouldDelete) {
-      return;
-    }
+      notes: eventForm.notes,
+    };
 
     try {
-      const response = await fetch(`${API_BASE}/events/${eventId}`, {
-        method: "DELETE",
-        headers: authHeader,
-      });
-
-      if (!response.ok && response.status !== 204) {
-        const data = await parseJsonSafe(response);
-        throw new Error(data.error || "Could not delete event.");
+      if (eventDialogMode === "edit" && selectedEvent?.id) {
+        await updateEvent(selectedEvent.id, payload);
+      } else {
+        await createEvent(payload);
       }
 
-      setEvents((current) =>
-        current.filter((calendarEvent) => `${calendarEvent.id}` !== `${eventId}`)
-      );
+      closeEventDialog();
       setError("");
     } catch (eventError) {
       setError(eventError.message);
     }
+  };
+
+  const openEventDetails = (calendarEvent) => {
+    const normalized = {
+      id: calendarEvent.id,
+      title: calendarEvent.title,
+      start: calendarEvent.startStr,
+      end: calendarEvent.endStr,
+      notes: calendarEvent.extendedProps.notes || "",
+      allDay: calendarEvent.allDay,
+    };
+
+    setSelectedEvent(normalized);
+    setEventDialogMode("view");
+  };
+
+  const startEditingSelectedEvent = () => {
+    if (!selectedEvent) {
+      return;
+    }
+
+    const startParts = formatDateTimeForInput(selectedEvent.start);
+
+    setEventForm({
+      title: selectedEvent.title || "",
+      startDate: startParts.startDate,
+      startTime: startParts.startTime,
+      durationMinutes: getDurationMinutes(selectedEvent.start, selectedEvent.end),
+      notes: selectedEvent.notes || "",
+    });
+    setEventDialogMode("edit");
+  };
+
+  const handleEventClick = (clickInfo) => {
+    openEventDetails(clickInfo.event);
   };
 
   const updateUserDraft = (targetId, patch) => {
@@ -481,7 +591,7 @@ function App() {
           <h2>Welcome, {user.email}</h2>
           <p>
             {activePage === "calendar"
-              ? "Pick a date, set time and duration, then create your event. Click an event to delete it."
+              ? "Click + to create an event. Click event name to view details and edit."
               : "Manage users: approve accounts, grant admin, and edit email/password."}
           </p>
         </div>
@@ -520,85 +630,10 @@ function App() {
                 </button>
               ))}
             </div>
-            <p className="calendar-tip">
-              Events are sorted by start time. Tap/click a date to prefill the form.
-            </p>
+            <button type="button" className="create-event-button" onClick={() => openCreateDialog()}>
+              +
+            </button>
           </div>
-
-          <form className="event-form" onSubmit={handleEventFormSubmit}>
-            <div className="event-form-grid">
-              <label htmlFor="event-title">Name</label>
-              <input
-                id="event-title"
-                value={eventForm.title}
-                onChange={(e) => setEventForm((current) => ({ ...current, title: e.target.value }))}
-                placeholder="Event name"
-                required
-              />
-
-              <label htmlFor="event-start-date">Start date</label>
-              <input
-                id="event-start-date"
-                type="date"
-                value={eventForm.startDate}
-                onChange={(e) =>
-                  setEventForm((current) => ({
-                    ...current,
-                    startDate: e.target.value,
-                  }))
-                }
-                required
-              />
-
-              <label htmlFor="event-start-time">Start time</label>
-              <input
-                id="event-start-time"
-                type="time"
-                value={eventForm.startTime}
-                onChange={(e) =>
-                  setEventForm((current) => ({
-                    ...current,
-                    startTime: e.target.value,
-                  }))
-                }
-                required
-              />
-
-              <label htmlFor="event-duration">Length (minutes)</label>
-              <input
-                id="event-duration"
-                type="number"
-                min={5}
-                step={5}
-                value={eventForm.durationMinutes}
-                onChange={(e) =>
-                  setEventForm((current) => ({
-                    ...current,
-                    durationMinutes: e.target.value,
-                  }))
-                }
-                required
-              />
-
-              <label htmlFor="event-notes">Description</label>
-              <input
-                id="event-notes"
-                value={eventForm.notes}
-                onChange={(e) => setEventForm((current) => ({ ...current, notes: e.target.value }))}
-                placeholder="Optional details"
-              />
-            </div>
-            <div className="event-form-actions">
-              <button type="submit">Create event</button>
-              <button
-                type="button"
-                className="link-button"
-                onClick={() => setEventForm(blankEventForm)}
-              >
-                Clear
-              </button>
-            </div>
-          </form>
 
           <FullCalendar
             ref={calendarRef}
@@ -616,12 +651,7 @@ function App() {
             firstDay={1}
             events={sortedEvents}
             eventOrder="start,title"
-            eventTimeFormat={{
-              hour: "2-digit",
-              minute: "2-digit",
-              meridiem: false,
-            }}
-            displayEventTime
+            displayEventTime={false}
             select={handleDateSelect}
             dateClick={handleDateClick}
             eventClick={handleEventClick}
@@ -631,6 +661,121 @@ function App() {
             fixedWeekCount={!isMobile}
           />
         </section>
+      )}
+
+      {eventDialogMode && (
+        <div className="modal-overlay" role="presentation" onClick={closeEventDialog}>
+          <section className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            {(eventDialogMode === "create" || eventDialogMode === "edit") && (
+              <>
+                <h3>{eventDialogMode === "create" ? "Create event" : "Edit event"}</h3>
+                <form className="event-form" onSubmit={handleEventFormSubmit}>
+                  <div className="event-form-grid">
+                    <label htmlFor="event-title">Name</label>
+                    <input
+                      id="event-title"
+                      value={eventForm.title}
+                      onChange={(e) =>
+                        setEventForm((current) => ({
+                          ...current,
+                          title: e.target.value,
+                        }))
+                      }
+                      placeholder="Event name"
+                      required
+                    />
+
+                    <label htmlFor="event-start-date">Start date</label>
+                    <input
+                      id="event-start-date"
+                      type="date"
+                      value={eventForm.startDate}
+                      onChange={(e) =>
+                        setEventForm((current) => ({
+                          ...current,
+                          startDate: e.target.value,
+                        }))
+                      }
+                      required
+                    />
+
+                    <label htmlFor="event-start-time">Start time</label>
+                    <input
+                      id="event-start-time"
+                      type="time"
+                      value={eventForm.startTime}
+                      onChange={(e) =>
+                        setEventForm((current) => ({
+                          ...current,
+                          startTime: e.target.value,
+                        }))
+                      }
+                      required
+                    />
+
+                    <label htmlFor="event-duration">Length (minutes)</label>
+                    <input
+                      id="event-duration"
+                      type="number"
+                      min={5}
+                      step={5}
+                      value={eventForm.durationMinutes}
+                      onChange={(e) =>
+                        setEventForm((current) => ({
+                          ...current,
+                          durationMinutes: e.target.value,
+                        }))
+                      }
+                      required
+                    />
+
+                    <label htmlFor="event-notes">Description</label>
+                    <textarea
+                      id="event-notes"
+                      rows={6}
+                      value={eventForm.notes}
+                      onChange={(e) =>
+                        setEventForm((current) => ({
+                          ...current,
+                          notes: e.target.value,
+                        }))
+                      }
+                      placeholder={"Add multiple lines and links like:\nhttps://example.com"}
+                    />
+                  </div>
+                  <div className="event-form-actions">
+                    <button type="submit">{eventDialogMode === "create" ? "Create" : "Save"}</button>
+                    <button type="button" className="link-button" onClick={closeEventDialog}>
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
+
+            {eventDialogMode === "view" && selectedEvent && (
+              <>
+                <h3>{selectedEvent.title}</h3>
+                <p className="event-time-row">
+                  Starts: {selectedEvent.start ? new Date(selectedEvent.start).toLocaleString() : "-"}
+                </p>
+                <p className="event-time-row">
+                  Ends: {selectedEvent.end ? new Date(selectedEvent.end).toLocaleString() : "-"}
+                </p>
+                <h4>Description</h4>
+                <LinkifiedText text={selectedEvent.notes} />
+                <div className="event-form-actions">
+                  <button type="button" onClick={startEditingSelectedEvent}>
+                    Edit
+                  </button>
+                  <button type="button" className="link-button" onClick={closeEventDialog}>
+                    Close
+                  </button>
+                </div>
+              </>
+            )}
+          </section>
+        </div>
       )}
 
       {activePage === "admin" && user.isAdmin && (
