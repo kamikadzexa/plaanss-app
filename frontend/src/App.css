@@ -241,6 +241,27 @@ button:hover {
   margin-bottom: 1em;
 }
 
+.fc .event-status-upcoming .fc-event-dot,
+.fc .event-status-upcoming .fc-daygrid-event-dot,
+.fc .event-status-upcoming .fc-list-event-dot {
+  border-color: #2d63ff;
+  background-color: #2d63ff;
+}
+
+.fc .event-status-live .fc-event-dot,
+.fc .event-status-live .fc-daygrid-event-dot,
+.fc .event-status-live .fc-list-event-dot {
+  border-color: #d13d3d;
+  background-color: #d13d3d;
+}
+
+.fc .event-status-past .fc-event-dot,
+.fc .event-status-past .fc-daygrid-event-dot,
+.fc .event-status-past .fc-list-event-dot {
+  border-color: #8891a7;
+  background-color: #8891a7;
+}
+
 .calendar-card .fc {
   min-height: 560px;
 }

@@ -93,6 +93,30 @@ const getDurationMinutes = (start, end) => {
   return `${Math.max(5, Math.round((endMs - startMs) / 60000))}`;
 };
 
+const getEventStatus = (eventStart, eventEnd, now = new Date()) => {
+  const start = new Date(eventStart);
+  if (Number.isNaN(start.getTime())) {
+    return "event-status-upcoming";
+  }
+
+  const end = eventEnd ? new Date(eventEnd) : null;
+  const hasValidEnd = end && !Number.isNaN(end.getTime());
+
+  if (now < start) {
+    return "event-status-upcoming";
+  }
+
+  if (hasValidEnd && now >= end) {
+    return "event-status-past";
+  }
+
+  if (hasValidEnd && now >= start && now < end) {
+    return "event-status-live";
+  }
+
+  return "event-status-past";
+};
+
 const formatLinkLabel = (url, maxLength = 42) => {
   if (url.length <= maxLength) {
     return url;
@@ -149,8 +173,9 @@ function App() {
   const [adminLoading, setAdminLoading] = useState(false);
   const calendarRef = useRef(null);
   const [isMobile, setIsMobile] = useState(getInitialIsMobile);
-  const [calendarView, setCalendarView] = useState(isMobile ? "listWeek" : "dayGridMonth");
-  const weekViewKey = isMobile ? "listWeek" : "weekRow";
+  const [calendarView, setCalendarView] = useState("dayGridMonth");
+  const weekViewKey = "weekRow";
+  const [nowTick, setNowTick] = useState(Date.now());
 
   const [eventDialogMode, setEventDialogMode] = useState(null);
   const [eventForm, setEventForm] = useState(blankEventForm);
@@ -199,11 +224,7 @@ function App() {
     const handleViewportChange = (event) => {
       setIsMobile(event.matches);
       setCalendarView((currentView) => {
-        if (event.matches) {
-          if (currentView === "dayGridMonth" || currentView === "weekRow") {
-            return "listWeek";
-          }
-        } else if (currentView === "listWeek") {
+        if (!event.matches && currentView === "listWeek") {
           return "weekRow";
         }
 
@@ -223,6 +244,14 @@ function App() {
       calendarApi.changeView(calendarView);
     }
   }, [calendarView]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setNowTick(Date.now());
+    }, 60000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     if (!token) {
@@ -706,6 +735,7 @@ function App() {
               minute: "2-digit",
               meridiem: false,
             }}
+            eventClassNames={(arg) => [getEventStatus(arg.event.start, arg.event.end, new Date(nowTick))]}
             select={handleDateSelect}
             dateClick={handleDateClick}
             eventClick={handleEventClick}
