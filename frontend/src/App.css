@@ -195,6 +195,109 @@ button:hover {
 }
 
 
+.desktop-time-picker {
+  position: relative;
+  width: fit-content;
+}
+
+.desktop-time-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 126px;
+  padding: 10px 12px;
+  border: 1px solid #cdd4e5;
+  border-radius: 10px;
+  background: #fff;
+  color: #1a1d26;
+}
+
+.desktop-time-picker-trigger:hover {
+  background: #f4f7ff;
+}
+
+.desktop-time-picker-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  width: 252px;
+  background: #fff;
+  border: 1px solid #dce3f4;
+  border-radius: 12px;
+  box-shadow: 0 18px 35px rgba(9, 17, 40, 0.2);
+  padding: 12px;
+}
+
+.desktop-time-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.desktop-time-picker-header button {
+  min-width: 44px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #edf2ff;
+  color: #264291;
+}
+
+.desktop-time-picker-header button.is-active {
+  background: #2d63ff;
+  color: #fff;
+}
+
+.desktop-time-picker-period-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.desktop-time-picker-period-toggle button {
+  padding: 7px;
+  border-radius: 8px;
+  background: #edf2ff;
+  color: #264291;
+}
+
+.desktop-time-picker-period-toggle button.is-active {
+  background: #2d63ff;
+  color: #fff;
+}
+
+.desktop-clock-face {
+  position: relative;
+  width: 220px;
+  height: 220px;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: radial-gradient(circle at center, #f9fbff 0, #eef3ff 100%);
+  border: 1px solid #dce3f4;
+}
+
+.desktop-clock-marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  padding: 0;
+  background: #dfe8ff;
+  color: #264291;
+  font-size: 0.8rem;
+}
+
+.desktop-clock-marker.is-selected {
+  background: #2d63ff;
+  color: #fff;
+}
+
+
 .danger-button {
   background: #c13131;
 }

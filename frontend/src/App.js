@@ -242,6 +242,176 @@ function LinkifiedText({ text }) {
   );
 }
 
+const parseTimeValue = (value) => {
+  const [hourValue, minuteValue] = (value || "09:00").split(":");
+  const hours = Number.parseInt(hourValue, 10);
+  const minutes = Number.parseInt(minuteValue, 10);
+
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+    return { hours: 9, minutes: 0 };
+  }
+
+  return {
+    hours: Math.min(23, Math.max(0, hours)),
+    minutes: Math.min(59, Math.max(0, minutes)),
+  };
+};
+
+const buildTimeString = ({ hours, minutes }) =>
+  `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+
+function DesktopClockTimePicker({ id, value, onChange, required = false }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [clockMode, setClockMode] = useState("hour");
+  const [draftTime, setDraftTime] = useState(() => parseTimeValue(value));
+  const wrapperRef = useRef(null);
+
+  const period = draftTime.hours >= 12 ? "pm" : "am";
+  const hour12 = draftTime.hours % 12 || 12;
+  const displayValue = buildTimeString(parseTimeValue(value));
+
+  useEffect(() => {
+    if (!isOpen) {
+      setDraftTime(parseTimeValue(value));
+    }
+  }, [value, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    const handleOutsideClick = (event) => {
+      if (!wrapperRef.current?.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", handleOutsideClick);
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      window.removeEventListener("mousedown", handleOutsideClick);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [isOpen]);
+
+  const hourMarkers = Array.from({ length: 12 }, (_, index) => index + 1);
+  const minuteMarkers = Array.from({ length: 12 }, (_, index) => index * 5);
+
+  const applyHour = (nextHour12) => {
+    const normalized = nextHour12 % 12;
+    const nextHours = period === "pm" ? normalized + 12 : normalized;
+    setDraftTime((current) => ({ ...current, hours: nextHours }));
+    setClockMode("minute");
+  };
+
+  const applyMinute = (nextMinute) => {
+    const roundedMinute = Math.min(59, Math.max(0, nextMinute));
+    const nextTime = {
+      hours: draftTime.hours,
+      minutes: roundedMinute,
+    };
+
+    setDraftTime(nextTime);
+    onChange(buildTimeString(nextTime));
+    setIsOpen(false);
+  };
+
+  const setPeriod = (nextPeriod) => {
+    setDraftTime((current) => {
+      const currentHour = current.hours;
+      if (nextPeriod === "am") {
+        return {
+          ...current,
+          hours: currentHour >= 12 ? currentHour - 12 : currentHour,
+        };
+      }
+
+      return {
+        ...current,
+        hours: currentHour < 12 ? currentHour + 12 : currentHour,
+      };
+    });
+  };
+
+  return (
+    <div className="desktop-time-picker" ref={wrapperRef}>
+      <input id={id} type="hidden" value={displayValue} required={required} readOnly />
+      <button
+        type="button"
+        className="desktop-time-picker-trigger"
+        onClick={() => {
+          setDraftTime(parseTimeValue(value));
+          setClockMode("hour");
+          setIsOpen((current) => !current);
+        }}
+        aria-label="Open clock time picker"
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+      >
+        <span>{displayValue}</span>
+        <span aria-hidden="true">🕒</span>
+      </button>
+
+      {isOpen && (
+        <div className="desktop-time-picker-popover" role="dialog" aria-label="Clock time picker">
+          <div className="desktop-time-picker-header">
+            <button
+              type="button"
+              className={clockMode === "hour" ? "is-active" : ""}
+              onClick={() => setClockMode("hour")}
+            >
+              {String(hour12).padStart(2, "0")}
+            </button>
+            <span>:</span>
+            <button
+              type="button"
+              className={clockMode === "minute" ? "is-active" : ""}
+              onClick={() => setClockMode("minute")}
+            >
+              {String(draftTime.minutes).padStart(2, "0")}
+            </button>
+          </div>
+
+          <div className="desktop-time-picker-period-toggle" role="group" aria-label="AM and PM selection">
+            <button type="button" className={period === "am" ? "is-active" : ""} onClick={() => setPeriod("am")}>AM</button>
+            <button type="button" className={period === "pm" ? "is-active" : ""} onClick={() => setPeriod("pm")}>PM</button>
+          </div>
+
+          <div className="desktop-clock-face" aria-label={clockMode === "hour" ? "Select hour" : "Select minute"}>
+            {(clockMode === "hour" ? hourMarkers : minuteMarkers).map((marker, index) => {
+              const angle = (index * 30 - 90) * (Math.PI / 180);
+              const radius = 92;
+              const top = 110 + radius * Math.sin(angle);
+              const left = 110 + radius * Math.cos(angle);
+              const isSelected = clockMode === "hour" ? marker === hour12 : marker === draftTime.minutes;
+
+              return (
+                <button
+                  key={`${clockMode}-${marker}`}
+                  type="button"
+                  className={`desktop-clock-marker ${isSelected ? "is-selected" : ""}`}
+                  style={{ top: `${top}px`, left: `${left}px` }}
+                  onClick={() => (clockMode === "hour" ? applyHour(marker) : applyMinute(marker))}
+                >
+                  {String(marker).padStart(2, "0")}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [token, setToken] = useState("");
   const [user, setUser] = useState(null);
@@ -1046,18 +1216,32 @@ function App() {
                     />
 
                     <label htmlFor="event-start-time">Start time</label>
-                    <input
-                      id="event-start-time"
-                      type="time"
-                      value={eventForm.startTime}
-                      onChange={(e) =>
-                        setEventForm((current) => ({
-                          ...current,
-                          startTime: e.target.value,
-                        }))
-                      }
-                      required
-                    />
+                    {isMobile ? (
+                      <input
+                        id="event-start-time"
+                        type="time"
+                        value={eventForm.startTime}
+                        onChange={(e) =>
+                          setEventForm((current) => ({
+                            ...current,
+                            startTime: e.target.value,
+                          }))
+                        }
+                        required
+                      />
+                    ) : (
+                      <DesktopClockTimePicker
+                        id="event-start-time"
+                        value={eventForm.startTime}
+                        onChange={(nextTime) =>
+                          setEventForm((current) => ({
+                            ...current,
+                            startTime: nextTime,
+                          }))
+                        }
+                        required
+                      />
+                    )}
 
                     <label>Timezone</label>
                     <div className="timezone-switch" role="group" aria-label="Timezone selection">
