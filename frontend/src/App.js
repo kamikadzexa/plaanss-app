@@ -25,6 +25,14 @@ const getInitialIsMobile = () =>
     ? window.matchMedia(mobileMediaQuery).matches
     : false;
 
+const getStartOfWeek = (value = new Date()) => {
+  const date = new Date(value);
+  const mondayOffset = (date.getDay() + 6) % 7;
+  date.setDate(date.getDate() - mondayOffset);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
 const getDatePart = (value) => {
   if (!value) {
     return "";
@@ -169,6 +177,28 @@ const getEventStatus = (eventStart, eventEnd, now = new Date()) => {
   return "event-status-past";
 };
 
+const formatEventTimeRange = (eventStart, eventEnd) => {
+  const start = new Date(eventStart);
+  const end = eventEnd ? new Date(eventEnd) : null;
+
+  if (Number.isNaN(start.getTime())) {
+    return "Time unavailable";
+  }
+
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const startLabel = formatter.format(start);
+
+  if (!end || Number.isNaN(end.getTime())) {
+    return `${startLabel} - --:--`;
+  }
+
+  return `${startLabel} - ${formatter.format(end)}`;
+};
+
 const formatLinkLabel = (url, maxLength = 42) => {
   if (url.length <= maxLength) {
     return url;
@@ -225,8 +255,8 @@ function App() {
   const [adminLoading, setAdminLoading] = useState(false);
   const calendarRef = useRef(null);
   const [isMobile, setIsMobile] = useState(getInitialIsMobile);
-  const [calendarView, setCalendarView] = useState(isMobile ? "listWeek" : "dayGridMonth");
-  const weekViewKey = isMobile ? "listWeek" : "weekRow";
+  const [calendarView, setCalendarView] = useState(isMobile ? "mobileWeek" : "dayGridMonth");
+  const weekViewKey = isMobile ? "mobileWeek" : "weekRow";
   const [nowTick, setNowTick] = useState(Date.now());
   const [calendarRangeStart, setCalendarRangeStart] = useState(null);
 
@@ -270,52 +300,44 @@ function App() {
 
 
 
-  const eventsForCalendar = useMemo(() => {
-    if (!(isMobile && calendarView === "listWeek")) {
-      return sortedEvents;
-    }
+  const eventsForCalendar = sortedEvents;
 
-    const start = calendarRangeStart ? new Date(calendarRangeStart) : new Date();
-    const mondayOffset = (start.getDay() + 6) % 7;
-    start.setDate(start.getDate() - mondayOffset);
-    start.setHours(0, 0, 0, 0);
+  const mobileWeekDays = useMemo(() => {
+    const weekStart = getStartOfWeek(calendarRangeStart || new Date());
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
 
-    const placeholders = [];
+    const weekEvents = sortedEvents.filter((entry) => {
+      const rawStart = entry.start || entry.startStr;
+      const eventStart = new Date(rawStart);
 
-    for (let index = 0; index < 7; index += 1) {
-      const dayStart = new Date(start);
-      dayStart.setDate(start.getDate() + index);
+      if (Number.isNaN(eventStart.getTime())) {
+        return false;
+      }
+
+      return eventStart >= weekStart && eventStart < weekEnd;
+    });
+
+    return Array.from({ length: 7 }, (_, index) => {
+      const dayStart = new Date(weekStart);
+      dayStart.setDate(dayStart.getDate() + index);
 
       const dayEnd = new Date(dayStart);
-      dayEnd.setDate(dayStart.getDate() + 1);
+      dayEnd.setDate(dayEnd.getDate() + 1);
 
-      const hasEventOnDay = sortedEvents.some((entry) => {
+      const dayEvents = weekEvents.filter((entry) => {
         const rawStart = entry.start || entry.startStr;
         const eventStart = new Date(rawStart);
-
-        if (Number.isNaN(eventStart.getTime())) {
-          return false;
-        }
-
         return eventStart >= dayStart && eventStart < dayEnd;
       });
 
-      if (!hasEventOnDay) {
-        const dayKey = dayStart.toISOString().slice(0, 10);
-        placeholders.push({
-          id: `placeholder-${dayKey}`,
-          title: "No events",
-          start: dayStart.toISOString(),
-          allDay: true,
-          extendedProps: {
-            isPlaceholder: true,
-          },
-        });
-      }
-    }
-
-    return [...sortedEvents, ...placeholders];
-  }, [calendarRangeStart, calendarView, isMobile, sortedEvents]);
+      return {
+        key: dayStart.toISOString().slice(0, 10),
+        date: dayStart,
+        events: dayEvents,
+      };
+    });
+  }, [calendarRangeStart, sortedEvents]);
 
   const parseJsonSafe = async (response) => {
     try {
@@ -337,9 +359,9 @@ function App() {
       setCalendarView((currentView) => {
         if (event.matches) {
           if (currentView === "dayGridMonth" || currentView === "weekRow") {
-            return "listWeek";
+            return "mobileWeek";
           }
-        } else if (currentView === "listWeek") {
+        } else if (currentView === "mobileWeek") {
           return "weekRow";
         }
 
@@ -354,6 +376,10 @@ function App() {
 
   useEffect(() => {
     const calendarApi = calendarRef.current?.getApi();
+
+    if (calendarView === "mobileWeek") {
+      return;
+    }
 
     if (calendarApi && calendarApi.view.type !== calendarView) {
       calendarApi.changeView(calendarView);
@@ -601,10 +627,10 @@ function App() {
     const normalized = {
       id: calendarEvent.id,
       title: calendarEvent.title,
-      start: calendarEvent.startStr,
-      end: calendarEvent.endStr,
-      notes: calendarEvent.extendedProps.notes || "",
-      allDay: calendarEvent.allDay,
+      start: calendarEvent.startStr || calendarEvent.start || null,
+      end: calendarEvent.endStr || calendarEvent.end || null,
+      notes: calendarEvent.extendedProps?.notes || calendarEvent.notes || "",
+      allDay: Boolean(calendarEvent.allDay),
     };
 
     setSelectedEvent(normalized);
@@ -731,6 +757,26 @@ function App() {
     },
   ];
 
+  const goToPreviousMobileWeek = () => {
+    setCalendarRangeStart((current) => {
+      const start = getStartOfWeek(current || new Date());
+      start.setDate(start.getDate() - 7);
+      return start.toISOString();
+    });
+  };
+
+  const goToNextMobileWeek = () => {
+    setCalendarRangeStart((current) => {
+      const start = getStartOfWeek(current || new Date());
+      start.setDate(start.getDate() + 7);
+      return start.toISOString();
+    });
+  };
+
+  const goToCurrentMobileWeek = () => {
+    setCalendarRangeStart(getStartOfWeek(new Date()).toISOString());
+  };
+
   if (!user) {
     return (
       <div className="auth-shell">
@@ -816,7 +862,9 @@ function App() {
                   className={calendarView === view.key ? "is-active" : ""}
                   onClick={() => {
                     setCalendarView(view.key);
-                    calendarRef.current?.getApi().changeView(view.key);
+                    if (view.key !== "mobileWeek") {
+                      calendarRef.current?.getApi().changeView(view.key);
+                    }
                   }}
                 >
                   {view.label}
@@ -828,7 +876,60 @@ function App() {
             </button>
           </div>
 
-          <FullCalendar
+          {isMobile && calendarView === "mobileWeek" ? (
+            <section className="mobile-week-view" aria-label="Week view">
+              <header className="mobile-week-controls">
+                <button type="button" onClick={goToPreviousMobileWeek}>
+                  prev
+                </button>
+                <button type="button" onClick={goToCurrentMobileWeek}>
+                  today
+                </button>
+                <button type="button" onClick={goToNextMobileWeek}>
+                  next
+                </button>
+              </header>
+
+              <div className="mobile-week-days">
+                {mobileWeekDays.map((day) => (
+                  <article key={day.key} className="mobile-week-day-row">
+                    <h4>
+                      {new Intl.DateTimeFormat("en-GB", {
+                        weekday: "long",
+                        day: "2-digit",
+                      }).format(day.date)}
+                    </h4>
+
+                    <div className="mobile-week-events-list">
+                      {day.events.length === 0 ? (
+                        <p className="mobile-week-empty">No events</p>
+                      ) : (
+                        day.events.map((event) => {
+                          const statusClass = getEventStatus(event.start, event.end, new Date(nowTick));
+
+                          return (
+                            <button
+                              key={event.id}
+                              type="button"
+                              className={`mobile-week-event-card ${statusClass}`}
+                              onClick={() => handleEventClick({ event })}
+                            >
+                              <span className="mobile-week-event-time">
+                                <span className="mobile-week-event-dot" aria-hidden="true" />
+                                {formatEventTimeRange(event.start, event.end)}
+                              </span>
+                              <span className="mobile-week-event-name">{event.title || "Untitled event"}</span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : (
+            <FullCalendar
             ref={calendarRef}
             plugins={[dayGridPlugin, interactionPlugin, listPlugin]}
             initialView={calendarView}
@@ -882,7 +983,7 @@ function App() {
             events={eventsForCalendar}
             eventOrder="start,title"
             displayEventTime
-            displayEventEnd={!isMobile || calendarView === "listWeek"}
+            displayEventEnd={!isMobile}
             eventTimeFormat={{
               hour: "2-digit",
               minute: "2-digit",
@@ -903,7 +1004,8 @@ function App() {
             expandRows={false}
             dayMaxEventRows={false}
             fixedWeekCount={false}
-          />
+            />
+          )}
         </section>
       )}
 
