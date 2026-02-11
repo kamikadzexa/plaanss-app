@@ -384,6 +384,100 @@ button:hover {
   margin: 0 0 12px;
 }
 
+.mobile-week-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mobile-week-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobile-week-controls button {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.75rem;
+  padding: 10px 8px;
+}
+
+.mobile-week-days {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mobile-week-day-row {
+  border: 1px solid #dce3f4;
+  border-radius: 12px;
+  padding: 10px;
+  background: #f9fbff;
+}
+
+.mobile-week-day-row h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.mobile-week-events-list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mobile-week-empty {
+  margin: 0;
+  color: #6e768c;
+  font-size: 0.88rem;
+}
+
+.mobile-week-event-card {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #dce3f4;
+  background: #fff;
+  color: #1a1d26;
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mobile-week-event-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #4a546a;
+}
+
+.mobile-week-event-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2d63ff;
+  flex: 0 0 8px;
+}
+
+.mobile-week-event-name {
+  overflow-wrap: anywhere;
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+
+.mobile-week-event-card.event-status-live .mobile-week-event-dot {
+  background: #d13d3d;
+}
+
+.mobile-week-event-card.event-status-past .mobile-week-event-dot {
+  background: #8891a7;
+}
+
 @media (max-width: 980px) {
   .admin-grid {
     grid-template-columns: 1fr;
