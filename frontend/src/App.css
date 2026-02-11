@@ -262,6 +262,23 @@ button:hover {
   background-color: #8891a7;
 }
 
+
+.fc .event-status-placeholder .fc-event-dot,
+.fc .event-status-placeholder .fc-daygrid-event-dot,
+.fc .event-status-placeholder .fc-list-event-dot {
+  border-color: #c7cddc;
+  background-color: #c7cddc;
+}
+
+.fc .event-status-placeholder .fc-list-event-time {
+  color: transparent;
+}
+
+.fc .event-status-placeholder .fc-list-event-title {
+  color: #8891a7;
+  font-style: italic;
+}
+
 .calendar-card .fc {
   min-height: 560px;
 }

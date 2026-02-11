@@ -173,9 +173,10 @@ function App() {
   const [adminLoading, setAdminLoading] = useState(false);
   const calendarRef = useRef(null);
   const [isMobile, setIsMobile] = useState(getInitialIsMobile);
-  const [calendarView, setCalendarView] = useState("dayGridMonth");
-  const weekViewKey = "weekRow";
+  const [calendarView, setCalendarView] = useState(isMobile ? "listWeek" : "dayGridMonth");
+  const weekViewKey = isMobile ? "listWeek" : "weekRow";
   const [nowTick, setNowTick] = useState(Date.now());
+  const [calendarRangeStart, setCalendarRangeStart] = useState(null);
 
   const [eventDialogMode, setEventDialogMode] = useState(null);
   const [eventForm, setEventForm] = useState(blankEventForm);
@@ -206,6 +207,55 @@ function App() {
     });
   }, [events]);
 
+
+
+  const eventsForCalendar = useMemo(() => {
+    if (!(isMobile && calendarView === "listWeek")) {
+      return sortedEvents;
+    }
+
+    const start = calendarRangeStart ? new Date(calendarRangeStart) : new Date();
+    const mondayOffset = (start.getDay() + 6) % 7;
+    start.setDate(start.getDate() - mondayOffset);
+    start.setHours(0, 0, 0, 0);
+
+    const placeholders = [];
+
+    for (let index = 0; index < 7; index += 1) {
+      const dayStart = new Date(start);
+      dayStart.setDate(start.getDate() + index);
+
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayStart.getDate() + 1);
+
+      const hasEventOnDay = sortedEvents.some((entry) => {
+        const rawStart = entry.start || entry.startStr;
+        const eventStart = new Date(rawStart);
+
+        if (Number.isNaN(eventStart.getTime())) {
+          return false;
+        }
+
+        return eventStart >= dayStart && eventStart < dayEnd;
+      });
+
+      if (!hasEventOnDay) {
+        const dayKey = dayStart.toISOString().slice(0, 10);
+        placeholders.push({
+          id: `placeholder-${dayKey}`,
+          title: "No events",
+          start: dayStart.toISOString(),
+          allDay: true,
+          extendedProps: {
+            isPlaceholder: true,
+          },
+        });
+      }
+    }
+
+    return [...sortedEvents, ...placeholders];
+  }, [calendarRangeStart, calendarView, isMobile, sortedEvents]);
+
   const parseJsonSafe = async (response) => {
     try {
       return await response.json();
@@ -224,7 +274,11 @@ function App() {
     const handleViewportChange = (event) => {
       setIsMobile(event.matches);
       setCalendarView((currentView) => {
-        if (!event.matches && currentView === "listWeek") {
+        if (event.matches) {
+          if (currentView === "dayGridMonth" || currentView === "weekRow") {
+            return "listWeek";
+          }
+        } else if (currentView === "listWeek") {
           return "weekRow";
         }
 
@@ -505,6 +559,10 @@ function App() {
   };
 
   const handleEventClick = (clickInfo) => {
+    if (clickInfo.event.extendedProps?.isPlaceholder) {
+      return;
+    }
+
     openEventDetails(clickInfo.event);
   };
 
@@ -698,6 +756,7 @@ function App() {
             initialView={calendarView}
             viewDidMount={(info) => {
               setCalendarView(info.view.type);
+              setCalendarRangeStart(info.view.activeStart?.toISOString() || null);
             }}
             headerToolbar={{
               left: "prev,next today",
@@ -708,6 +767,10 @@ function App() {
             firstDay={1}
             locale="en-gb"
             dayHeaderFormat={{ weekday: "short", day: "2-digit" }}
+            datesSet={(info) => {
+              setCalendarRangeStart(info.startStr || null);
+              setCalendarView(info.view.type);
+            }}
             views={{
               weekRow: {
                 type: "dayGrid",
@@ -727,7 +790,7 @@ function App() {
                 },
               },
             }}
-            events={sortedEvents}
+            events={eventsForCalendar}
             eventOrder="start,title"
             displayEventTime
             eventTimeFormat={{
@@ -735,7 +798,13 @@ function App() {
               minute: "2-digit",
               meridiem: false,
             }}
-            eventClassNames={(arg) => [getEventStatus(arg.event.start, arg.event.end, new Date(nowTick))]}
+            eventClassNames={(arg) => {
+              if (arg.event.extendedProps?.isPlaceholder) {
+                return ["event-status-placeholder"];
+              }
+
+              return [getEventStatus(arg.event.start, arg.event.end, new Date(nowTick))];
+            }}
             select={handleDateSelect}
             dateClick={handleDateClick}
             eventClick={handleEventClick}
