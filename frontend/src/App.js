@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import timeGridPlugin from "@fullcalendar/timegrid";
 import "./App.css";
 
 const API_BASE =
@@ -30,7 +31,7 @@ function App() {
   const [adminLoading, setAdminLoading] = useState(false);
   const calendarRef = useRef(null);
   const [isMobile, setIsMobile] = useState(getInitialIsMobile);
-  const [calendarView, setCalendarView] = useState(isMobile ? "dayGridDay" : "dayGridMonth");
+  const [calendarView, setCalendarView] = useState(isMobile ? "timeGridDay" : "dayGridMonth");
 
   const authHeader = useMemo(
     () => ({
@@ -59,10 +60,10 @@ function App() {
       setIsMobile(event.matches);
       setCalendarView((currentView) => {
         if (event.matches && currentView === "dayGridMonth") {
-          return "dayGridDay";
+          return "timeGridDay";
         }
 
-        if (!event.matches && currentView === "dayGridDay") {
+        if (!event.matches && currentView === "timeGridDay") {
           return "dayGridMonth";
         }
 
@@ -363,11 +364,11 @@ function App() {
       label: "Month",
     },
     {
-      key: "dayGridWeek",
+      key: "timeGridWeek",
       label: isMobile ? "Week" : "Week view",
     },
     {
-      key: "dayGridDay",
+      key: "timeGridDay",
       label: isMobile ? "Day" : "Day view",
     },
   ];
@@ -472,7 +473,7 @@ function App() {
           </div>
           <FullCalendar
             ref={calendarRef}
-            plugins={[dayGridPlugin, interactionPlugin]}
+            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
             initialView={calendarView}
             viewDidMount={(info) => {
               setCalendarView(info.view.type);
@@ -483,6 +484,7 @@ function App() {
               right: "",
             }}
             selectable
+            firstDay={1}
             events={events}
             select={handleDateSelect}
             dateClick={handleDateClick}
