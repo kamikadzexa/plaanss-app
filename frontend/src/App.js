@@ -4,7 +4,9 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import "./App.css";
 
-const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:8000";
+const API_BASE =
+  process.env.REACT_APP_API_URL ||
+  `${window.location.protocol}//${window.location.hostname}:8000`;
 
 const blankAuth = { email: "", password: "" };
 
@@ -24,6 +26,14 @@ function App() {
     }),
     [token]
   );
+
+  const parseJsonSafe = async (response) => {
+    try {
+      return await response.json();
+    } catch (error) {
+      return {};
+    }
+  };
 
   useEffect(() => {
     if (!token) {
@@ -80,7 +90,7 @@ function App() {
         body: JSON.stringify(authForm),
       });
 
-      const data = await response.json();
+      const data = await parseJsonSafe(response);
 
       if (!response.ok) {
         throw new Error(data.error || "Authentication failed.");
@@ -118,7 +128,7 @@ function App() {
         body: JSON.stringify(draftEvent),
       });
 
-      const data = await response.json();
+      const data = await parseJsonSafe(response);
 
       if (!response.ok) {
         throw new Error(data.error || "Could not create event.");
@@ -148,7 +158,7 @@ function App() {
       });
 
       if (!response.ok && response.status !== 204) {
-        const data = await response.json();
+        const data = await parseJsonSafe(response);
         throw new Error(data.error || "Could not delete event.");
       }
 
