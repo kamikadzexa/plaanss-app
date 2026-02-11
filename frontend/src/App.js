@@ -103,6 +103,37 @@ const formatLinkLabel = (url, maxLength = 42) => {
   return `${head}…${tail}`;
 };
 
+const abbreviateEventTitle = (title, maxLength = 9) => {
+  if (!title) {
+    return "";
+  }
+
+  return title.length > maxLength ? `${title.slice(0, maxLength)}…` : title;
+};
+
+const getEventTimingState = (eventLike) => {
+  const now = Date.now();
+  const startRaw = eventLike?.start ?? eventLike?.event?.start ?? eventLike?.startStr;
+  const endRaw = eventLike?.end ?? eventLike?.event?.end ?? eventLike?.endStr;
+
+  const startMs = Date.parse(startRaw);
+  const endMs = Date.parse(endRaw);
+
+  if (Number.isNaN(startMs)) {
+    return "past";
+  }
+
+  if (now < startMs) {
+    return "upcoming";
+  }
+
+  if (!Number.isNaN(endMs) && now <= endMs) {
+    return "happening";
+  }
+
+  return "past";
+};
+
 function LinkifiedText({ text }) {
   if (!text) {
     return <p className="event-description-empty">No description provided.</p>;
@@ -149,8 +180,9 @@ function App() {
   const [adminLoading, setAdminLoading] = useState(false);
   const calendarRef = useRef(null);
   const [isMobile, setIsMobile] = useState(getInitialIsMobile);
-  const [calendarView, setCalendarView] = useState(isMobile ? "listWeek" : "dayGridMonth");
-  const weekViewKey = isMobile ? "listWeek" : "weekRow";
+  const [calendarView, setCalendarView] = useState("dayGridMonth");
+  const weekViewKey = "weekRow";
+  const isMobileMonthView = isMobile && calendarView === "dayGridMonth";
 
   const [eventDialogMode, setEventDialogMode] = useState(null);
   const [eventForm, setEventForm] = useState(blankEventForm);
@@ -198,17 +230,6 @@ function App() {
 
     const handleViewportChange = (event) => {
       setIsMobile(event.matches);
-      setCalendarView((currentView) => {
-        if (event.matches) {
-          if (currentView === "dayGridMonth" || currentView === "weekRow") {
-            return "listWeek";
-          }
-        } else if (currentView === "listWeek") {
-          return "weekRow";
-        }
-
-        return currentView;
-      });
     };
 
     mediaQueryList.addEventListener("change", handleViewportChange);
@@ -641,7 +662,7 @@ function App() {
       {error && <p className="error-text">{error}</p>}
 
       {activePage === "calendar" && (
-        <section className="calendar-card">
+        <section className={`calendar-card ${isMobileMonthView ? "mobile-month-view" : ""}`}>
           <div className="calendar-toolbar">
             <div className="view-switcher" role="group" aria-label="Calendar view switcher">
               {calendarViews.map((view) => (
@@ -700,6 +721,21 @@ function App() {
             }}
             events={sortedEvents}
             eventOrder="start,title"
+            eventClassNames={(arg) => [`event-state-${getEventTimingState(arg.event)}`]}
+            eventContent={(arg) => {
+              if (!isMobileMonthView) {
+                return undefined;
+              }
+
+              return (
+                <div className="mobile-month-event-content">
+                  <span className="mobile-month-event-time">{arg.timeText}</span>
+                  <span className="mobile-month-event-title">
+                    {abbreviateEventTitle(arg.event.title)}
+                  </span>
+                </div>
+              );
+            }}
             displayEventTime
             eventTimeFormat={{
               hour: "2-digit",

@@ -245,6 +245,22 @@ button:hover {
   min-height: 560px;
 }
 
+
+.fc .event-state-upcoming {
+  --fc-event-border-color: #2d63ff;
+  --fc-event-bg-color: #2d63ff;
+}
+
+.fc .event-state-happening {
+  --fc-event-border-color: #de3c3c;
+  --fc-event-bg-color: #de3c3c;
+}
+
+.fc .event-state-past {
+  --fc-event-border-color: #7c8499;
+  --fc-event-bg-color: #7c8499;
+}
+
 .admin-grid {
   display: grid;
   grid-template-columns: minmax(220px, 2fr) 1fr 1fr minmax(180px, 1.5fr) auto;
@@ -288,7 +304,7 @@ button:hover {
 @media (max-width: 768px) {
   .auth-shell,
   .calendar-shell {
-    padding: 8px;
+    padding: 4px;
   }
 
   .auth-card {
@@ -310,7 +326,7 @@ button:hover {
   }
 
   .calendar-card {
-    padding: 8px;
+    padding: 6px;
   }
 
   .calendar-card .fc {
@@ -377,4 +393,54 @@ button:hover {
     padding-left: 10px;
     padding-right: 10px;
   }
+
+  .calendar-card.mobile-month-view .fc .fc-daygrid-day-events {
+    margin-top: 2px;
+  }
+
+  .calendar-card.mobile-month-view .fc .fc-daygrid-event-dot {
+    display: none;
+  }
+
+  .calendar-card.mobile-month-view .fc .fc-daygrid-dot-event {
+    padding: 1px 2px;
+    margin-top: 1px;
+  }
+
+  .calendar-card.mobile-month-view .fc .fc-daygrid-event-harness {
+    margin-top: 1px;
+  }
+
+  .calendar-card.mobile-month-view .fc .fc-daygrid-dot-event .fc-event-title,
+  .calendar-card.mobile-month-view .fc .fc-daygrid-dot-event .fc-event-time {
+    display: none;
+  }
+
+  .calendar-card.mobile-month-view .mobile-month-event-content {
+    display: grid;
+    grid-template-columns: 1fr;
+    line-height: 1.05;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .calendar-card.mobile-month-view .mobile-month-event-time,
+  .calendar-card.mobile-month-view .mobile-month-event-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
+    max-width: 100%;
+  }
+
+  .calendar-card.mobile-month-view .mobile-month-event-time {
+    font-size: 0.64rem;
+    font-weight: 700;
+  }
+
+  .calendar-card.mobile-month-view .mobile-month-event-title {
+    font-size: 0.64rem;
+    color: #223056;
+  }
+
 }
