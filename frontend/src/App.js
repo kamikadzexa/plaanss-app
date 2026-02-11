@@ -627,10 +627,10 @@ function App() {
     const normalized = {
       id: calendarEvent.id,
       title: calendarEvent.title,
-      start: calendarEvent.startStr,
-      end: calendarEvent.endStr,
-      notes: calendarEvent.extendedProps.notes || "",
-      allDay: calendarEvent.allDay,
+      start: calendarEvent.startStr || calendarEvent.start || null,
+      end: calendarEvent.endStr || calendarEvent.end || null,
+      notes: calendarEvent.extendedProps?.notes || calendarEvent.notes || "",
+      allDay: Boolean(calendarEvent.allDay),
     };
 
     setSelectedEvent(normalized);
