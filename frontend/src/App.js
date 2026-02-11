@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -18,6 +18,9 @@ function App() {
   const [authForm, setAuthForm] = useState(blankAuth);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [activePage, setActivePage] = useState("calendar");
+  const [users, setUsers] = useState([]);
+  const [adminLoading, setAdminLoading] = useState(false);
 
   const authHeader = useMemo(
     () => ({
@@ -30,7 +33,7 @@ function App() {
   const parseJsonSafe = async (response) => {
     try {
       return await response.json();
-    } catch (error) {
+    } catch (parseError) {
       return {};
     }
   };
@@ -39,6 +42,8 @@ function App() {
     if (!token) {
       setUser(null);
       setEvents([]);
+      setUsers([]);
+      setActivePage("calendar");
       localStorage.removeItem("token");
       return;
     }
@@ -52,23 +57,24 @@ function App() {
           headers: authHeader,
         });
 
+        const meData = await parseJsonSafe(meResponse);
+
         if (!meResponse.ok) {
-          throw new Error("Session expired. Please log in again.");
+          throw new Error(meData.error || "Session expired. Please log in again.");
         }
 
-        const meData = await meResponse.json();
         setUser(meData.user);
 
         const eventsResponse = await fetch(`${API_BASE}/events`, {
           headers: authHeader,
         });
+        const eventsData = await parseJsonSafe(eventsResponse);
 
         if (!eventsResponse.ok) {
-          throw new Error("Unable to load events.");
+          throw new Error(eventsData.error || "Unable to load events.");
         }
 
-        const eventsData = await eventsResponse.json();
-        setEvents(eventsData.events);
+        setEvents(eventsData.events || []);
       } catch (bootError) {
         setToken("");
         setError(bootError.message);
@@ -77,6 +83,35 @@ function App() {
 
     bootstrap();
   }, [token, authHeader]);
+
+  const loadAdminUsers = async () => {
+    if (!user?.isAdmin) {
+      return;
+    }
+
+    try {
+      setAdminLoading(true);
+      const response = await fetch(`${API_BASE}/admin/users`, {
+        headers: authHeader,
+      });
+      const data = await parseJsonSafe(response);
+
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to load users");
+      }
+
+      const normalized = (data.users || []).map((entry) => ({
+        ...entry,
+        newPassword: "",
+      }));
+      setUsers(normalized);
+      setError("");
+    } catch (adminError) {
+      setError(adminError.message);
+    } finally {
+      setAdminLoading(false);
+    }
+  };
 
   const handleAuthSubmit = async (event) => {
     event.preventDefault();
@@ -94,6 +129,12 @@ function App() {
 
       if (!response.ok) {
         throw new Error(data.error || "Authentication failed.");
+      }
+
+      if (data.requiresApproval) {
+        setAuthForm(blankAuth);
+        setError(data.message || "Account created. Wait for admin approval.");
+        return;
       }
 
       setAuthForm(blankAuth);
@@ -169,10 +210,80 @@ function App() {
     }
   };
 
+  const updateUserDraft = (targetId, patch) => {
+    setUsers((current) =>
+      current.map((entry) =>
+        `${entry.id}` === `${targetId}`
+          ? {
+              ...entry,
+              ...patch,
+            }
+          : entry
+      )
+    );
+  };
+
+  const saveUser = async (entry) => {
+    try {
+      const payload = {
+        email: entry.email,
+        isAdmin: Boolean(entry.isAdmin),
+        isApproved: Boolean(entry.isApproved),
+      };
+
+      if (entry.newPassword) {
+        payload.password = entry.newPassword;
+      }
+
+      const response = await fetch(`${API_BASE}/admin/users/${entry.id}`, {
+        method: "PUT",
+        headers: authHeader,
+        body: JSON.stringify(payload),
+      });
+      const data = await parseJsonSafe(response);
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update user");
+      }
+
+      setUsers((current) =>
+        current.map((item) =>
+          `${item.id}` === `${entry.id}`
+            ? {
+                ...item,
+                ...data.user,
+                newPassword: "",
+              }
+            : item
+        )
+      );
+
+      if (`${user.id}` === `${entry.id}`) {
+        setUser((current) => ({
+          ...current,
+          email: data.user.email,
+          isAdmin: data.user.isAdmin,
+          isApproved: data.user.isApproved,
+        }));
+      }
+
+      setError("");
+    } catch (saveError) {
+      setError(saveError.message);
+    }
+  };
+
+  const goToAdminPage = async () => {
+    setActivePage("admin");
+    await loadAdminUsers();
+  };
+
   const logout = () => {
     setToken("");
     setUser(null);
     setEvents([]);
+    setUsers([]);
+    setActivePage("calendar");
   };
 
   if (!token || !user) {
@@ -209,7 +320,10 @@ function App() {
           <button
             type="button"
             className="link-button"
-            onClick={() => setAuthMode((mode) => (mode === "login" ? "register" : "login"))}
+            onClick={() => {
+              setError("");
+              setAuthMode((mode) => (mode === "login" ? "register" : "login"));
+            }}
           >
             {authMode === "login" ? "Need an account? Register" : "Already have an account? Login"}
           </button>
@@ -223,26 +337,94 @@ function App() {
       <header className="calendar-header">
         <div>
           <h2>Welcome, {user.email}</h2>
-          <p>Select a date to create an event. Click an event to delete it.</p>
+          <p>
+            {activePage === "calendar"
+              ? "Select a date to create an event. Click an event to delete it."
+              : "Manage users: approve accounts, grant admin, and edit email/password."}
+          </p>
         </div>
-        <button type="button" onClick={logout}>
-          Logout
-        </button>
+        <div className="header-actions">
+          <button type="button" onClick={() => setActivePage("calendar")}>
+            Calendar
+          </button>
+          {user.isAdmin && (
+            <button type="button" onClick={goToAdminPage}>
+              User Management
+            </button>
+          )}
+          <button type="button" onClick={logout}>
+            Logout
+          </button>
+        </div>
       </header>
 
       {error && <p className="error-text">{error}</p>}
 
-      <section className="calendar-card">
-        <FullCalendar
-          plugins={[dayGridPlugin, interactionPlugin]}
-          initialView="dayGridMonth"
-          selectable
-          events={events}
-          select={handleDateSelect}
-          eventClick={handleEventClick}
-          height="auto"
-        />
-      </section>
+      {activePage === "calendar" && (
+        <section className="calendar-card">
+          <FullCalendar
+            plugins={[dayGridPlugin, interactionPlugin]}
+            initialView="dayGridMonth"
+            selectable
+            events={events}
+            select={handleDateSelect}
+            eventClick={handleEventClick}
+            height="auto"
+          />
+        </section>
+      )}
+
+      {activePage === "admin" && user.isAdmin && (
+        <section className="calendar-card">
+          <h3>User Management</h3>
+          {adminLoading ? (
+            <p>Loading users...</p>
+          ) : (
+            <div className="admin-grid">
+              <div className="admin-grid-head">Email</div>
+              <div className="admin-grid-head">Approved</div>
+              <div className="admin-grid-head">Admin</div>
+              <div className="admin-grid-head">New Password</div>
+              <div className="admin-grid-head">Action</div>
+
+              {users.map((entry) => (
+                <Fragment key={entry.id}>
+                  <input
+                    value={entry.email}
+                    onChange={(e) => updateUserDraft(entry.id, { email: e.target.value })}
+                  />
+                  <label className="checkbox-wrap">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(entry.isApproved)}
+                      onChange={(e) => updateUserDraft(entry.id, { isApproved: e.target.checked })}
+                    />
+                    Approved
+                  </label>
+                  <label className="checkbox-wrap">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(entry.isAdmin)}
+                      onChange={(e) => updateUserDraft(entry.id, { isAdmin: e.target.checked })}
+                    />
+                    Admin
+                  </label>
+                  <input
+                    type="password"
+                    minLength={6}
+                    placeholder="Leave blank to keep"
+                    value={entry.newPassword || ""}
+                    onChange={(e) => updateUserDraft(entry.id, { newPassword: e.target.value })}
+                  />
+                  <button type="button" onClick={() => saveUser(entry)}>
+                    Save
+                  </button>
+                </Fragment>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
     </main>
   );
 }

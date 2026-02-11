@@ -31,6 +31,15 @@ Dockerized full-stack calendar app with authentication.
    - Frontend: `http://YOUR_VPS_IP:3000`
    - Backend health: `http://YOUR_VPS_IP:8000/health`
 
+## User approval and admin management
+- The **first registered user** is automatically created as **admin** and **approved**.
+- Every later registration starts as **not approved** and cannot log in until approved by an admin.
+- Admins can open **User Management** in the UI to:
+  - approve/reject users
+  - grant/revoke admin role
+  - change user email
+  - reset user password
+
 ## Important Compose note
 Use `docker compose` (plugin/v2), not legacy `docker-compose` (python/v1).
 
