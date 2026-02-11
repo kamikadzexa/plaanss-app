@@ -509,24 +509,19 @@ button:hover {
     table-layout: auto;
   }
 
-  .fc .fc-listWeek-view .fc-list-event {
-    display: grid;
-    grid-template-columns: max-content 1fr;
-  }
-
   .fc .fc-listWeek-view .fc-list-event > td {
     border: none;
     vertical-align: top;
   }
 
   .fc .fc-listWeek-view .fc-list-event-time {
-    width: auto;
+    width: 1%;
     min-width: 74px;
     display: inline-flex;
     align-items: center;
     gap: 6px;
     white-space: nowrap;
-    padding-right: 8px;
+    padding-right: 10px;
     font-size: 1rem;
   }
 
@@ -542,7 +537,7 @@ button:hover {
   .fc .fc-listWeek-view .fc-list-event-title {
     min-width: 0;
     white-space: normal;
-    padding-left: 0;
+    padding-left: 8px;
     text-align: left;
     font-size: 1rem;
   }
