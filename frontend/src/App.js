@@ -2,7 +2,6 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
-import timeGridPlugin from "@fullcalendar/timegrid";
 import "./App.css";
 
 const API_BASE =
@@ -10,6 +9,13 @@ const API_BASE =
   `${window.location.protocol}//${window.location.hostname}:8000`;
 
 const blankAuth = { email: "", password: "" };
+const blankEventForm = {
+  title: "",
+  startDate: "",
+  startTime: "09:00",
+  durationMinutes: "60",
+  notes: "",
+};
 const mobileMediaQuery = "(max-width: 768px)";
 
 const getInitialIsMobile = () =>
@@ -17,6 +23,21 @@ const getInitialIsMobile = () =>
     ? window.matchMedia(mobileMediaQuery).matches
     : false;
 
+const getDatePart = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  return value.includes("T") ? value.split("T")[0] : value;
+};
+
+const getTimePart = (value, fallback = "09:00") => {
+  if (!value || !value.includes("T")) {
+    return fallback;
+  }
+
+  return value.split("T")[1].slice(0, 5);
+};
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem("token") || "");
@@ -31,7 +52,8 @@ function App() {
   const [adminLoading, setAdminLoading] = useState(false);
   const calendarRef = useRef(null);
   const [isMobile, setIsMobile] = useState(getInitialIsMobile);
-  const [calendarView, setCalendarView] = useState(isMobile ? "timeGridDay" : "dayGridMonth");
+  const [calendarView, setCalendarView] = useState(isMobile ? "dayGridDay" : "dayGridMonth");
+  const [eventForm, setEventForm] = useState(blankEventForm);
 
   const authHeader = useMemo(
     () => ({
@@ -40,6 +62,23 @@ function App() {
     }),
     [token]
   );
+
+  const sortedEvents = useMemo(() => {
+    const toTimestamp = (event) => {
+      const raw = event.start || event.startStr;
+      const parsed = Date.parse(raw);
+      return Number.isNaN(parsed) ? Number.MAX_SAFE_INTEGER : parsed;
+    };
+
+    return [...events].sort((a, b) => {
+      const startDiff = toTimestamp(a) - toTimestamp(b);
+      if (startDiff !== 0) {
+        return startDiff;
+      }
+
+      return (a.title || "").localeCompare(b.title || "");
+    });
+  }, [events]);
 
   const parseJsonSafe = async (response) => {
     try {
@@ -60,10 +99,10 @@ function App() {
       setIsMobile(event.matches);
       setCalendarView((currentView) => {
         if (event.matches && currentView === "dayGridMonth") {
-          return "timeGridDay";
+          return "dayGridDay";
         }
 
-        if (!event.matches && currentView === "timeGridDay") {
+        if (!event.matches && currentView === "dayGridDay") {
           return "dayGridMonth";
         }
 
@@ -75,8 +114,6 @@ function App() {
 
     return () => mediaQueryList.removeEventListener("change", handleViewportChange);
   }, []);
-
-
 
   useEffect(() => {
     const calendarApi = calendarRef.current?.getApi();
@@ -194,22 +231,7 @@ function App() {
     }
   };
 
-  const createEvent = async ({ start, end, allDay }) => {
-    const title = window.prompt("Event title:");
-    if (!title) {
-      return;
-    }
-
-    const notes = window.prompt("Optional notes:") || "";
-
-    const draftEvent = {
-      title,
-      start,
-      end,
-      allDay,
-      notes,
-    };
-
+  const createEvent = async (draftEvent) => {
     try {
       const response = await fetch(`${API_BASE}/events`, {
         method: "POST",
@@ -225,30 +247,63 @@ function App() {
 
       setEvents((current) => [...current, data.event]);
       setError("");
+      setEventForm(blankEventForm);
     } catch (eventError) {
       setError(eventError.message);
     }
   };
 
-  const handleDateSelect = async (selectionInfo) => {
-    await createEvent({
-      start: selectionInfo.startStr,
-      end: selectionInfo.endStr,
-      allDay: selectionInfo.allDay,
-    });
+  const prefillEventForm = (startValue) => {
+    setEventForm((current) => ({
+      ...current,
+      startDate: getDatePart(startValue),
+      startTime: getTimePart(startValue, current.startTime || "09:00"),
+    }));
+  };
 
+  const handleDateSelect = (selectionInfo) => {
+    prefillEventForm(selectionInfo.startStr);
     selectionInfo.view.calendar.unselect();
   };
 
-  const handleDateClick = async (dateInfo) => {
-    if (!isMobile) {
+  const handleDateClick = (dateInfo) => {
+    prefillEventForm(dateInfo.dateStr);
+  };
+
+  const handleEventFormSubmit = async (event) => {
+    event.preventDefault();
+
+    const title = eventForm.title.trim();
+    if (!title) {
+      setError("Event name is required.");
       return;
     }
 
+    if (!eventForm.startDate || !eventForm.startTime) {
+      setError("Start date and start time are required.");
+      return;
+    }
+
+    const duration = Number.parseInt(eventForm.durationMinutes, 10);
+    if (Number.isNaN(duration) || duration < 5) {
+      setError("Length must be at least 5 minutes.");
+      return;
+    }
+
+    const startDateTime = new Date(`${eventForm.startDate}T${eventForm.startTime}`);
+    if (Number.isNaN(startDateTime.getTime())) {
+      setError("Invalid start date or time.");
+      return;
+    }
+
+    const endDateTime = new Date(startDateTime.getTime() + duration * 60000);
+
     await createEvent({
-      start: dateInfo.dateStr,
-      end: dateInfo.dateStr,
-      allDay: true,
+      title,
+      start: startDateTime.toISOString(),
+      end: endDateTime.toISOString(),
+      allDay: false,
+      notes: eventForm.notes.trim(),
     });
   };
 
@@ -364,11 +419,11 @@ function App() {
       label: "Month",
     },
     {
-      key: "timeGridWeek",
+      key: "dayGridWeek",
       label: isMobile ? "Week" : "Week view",
     },
     {
-      key: "timeGridDay",
+      key: "dayGridDay",
       label: isMobile ? "Day" : "Day view",
     },
   ];
@@ -426,7 +481,7 @@ function App() {
           <h2>Welcome, {user.email}</h2>
           <p>
             {activePage === "calendar"
-              ? "Select a date to create an event. Click an event to delete it."
+              ? "Pick a date, set time and duration, then create your event. Click an event to delete it."
               : "Manage users: approve accounts, grant admin, and edit email/password."}
           </p>
         </div>
@@ -466,14 +521,88 @@ function App() {
               ))}
             </div>
             <p className="calendar-tip">
-              {isMobile
-                ? "Mobile mode: use Day or Week for easier reading."
-                : "Desktop mode: month view gives a full overview."}
+              Events are sorted by start time. Tap/click a date to prefill the form.
             </p>
           </div>
+
+          <form className="event-form" onSubmit={handleEventFormSubmit}>
+            <div className="event-form-grid">
+              <label htmlFor="event-title">Name</label>
+              <input
+                id="event-title"
+                value={eventForm.title}
+                onChange={(e) => setEventForm((current) => ({ ...current, title: e.target.value }))}
+                placeholder="Event name"
+                required
+              />
+
+              <label htmlFor="event-start-date">Start date</label>
+              <input
+                id="event-start-date"
+                type="date"
+                value={eventForm.startDate}
+                onChange={(e) =>
+                  setEventForm((current) => ({
+                    ...current,
+                    startDate: e.target.value,
+                  }))
+                }
+                required
+              />
+
+              <label htmlFor="event-start-time">Start time</label>
+              <input
+                id="event-start-time"
+                type="time"
+                value={eventForm.startTime}
+                onChange={(e) =>
+                  setEventForm((current) => ({
+                    ...current,
+                    startTime: e.target.value,
+                  }))
+                }
+                required
+              />
+
+              <label htmlFor="event-duration">Length (minutes)</label>
+              <input
+                id="event-duration"
+                type="number"
+                min={5}
+                step={5}
+                value={eventForm.durationMinutes}
+                onChange={(e) =>
+                  setEventForm((current) => ({
+                    ...current,
+                    durationMinutes: e.target.value,
+                  }))
+                }
+                required
+              />
+
+              <label htmlFor="event-notes">Description</label>
+              <input
+                id="event-notes"
+                value={eventForm.notes}
+                onChange={(e) => setEventForm((current) => ({ ...current, notes: e.target.value }))}
+                placeholder="Optional details"
+              />
+            </div>
+            <div className="event-form-actions">
+              <button type="submit">Create event</button>
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => setEventForm(blankEventForm)}
+              >
+                Clear
+              </button>
+            </div>
+          </form>
+
           <FullCalendar
             ref={calendarRef}
-            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+            plugins={[dayGridPlugin, interactionPlugin]}
             initialView={calendarView}
             viewDidMount={(info) => {
               setCalendarView(info.view.type);
@@ -485,13 +614,20 @@ function App() {
             }}
             selectable
             firstDay={1}
-            events={events}
+            events={sortedEvents}
+            eventOrder="start,title"
+            eventTimeFormat={{
+              hour: "2-digit",
+              minute: "2-digit",
+              meridiem: false,
+            }}
+            displayEventTime
             select={handleDateSelect}
             dateClick={handleDateClick}
             eventClick={handleEventClick}
             height={isMobile ? "auto" : "calc(100vh - 210px)"}
             expandRows={!isMobile}
-            dayMaxEventRows={isMobile ? 2 : 4}
+            dayMaxEventRows={isMobile ? 2 : 5}
             fixedWeekCount={!isMobile}
           />
         </section>
