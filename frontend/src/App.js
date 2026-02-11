@@ -92,6 +92,16 @@ const getDurationMinutes = (start, end) => {
   return `${Math.max(5, Math.round((endMs - startMs) / 60000))}`;
 };
 
+const formatLinkLabel = (url, maxLength = 42) => {
+  if (url.length <= maxLength) {
+    return url;
+  }
+
+  const head = url.slice(0, 26);
+  const tail = url.slice(-12);
+  return `${head}…${tail}`;
+};
+
 function LinkifiedText({ text }) {
   if (!text) {
     return <p className="event-description-empty">No description provided.</p>;
@@ -111,7 +121,7 @@ function LinkifiedText({ text }) {
               if (/^https?:\/\//.test(chunk)) {
                 return (
                   <a key={`${chunk}-${chunkIndex}`} href={chunk} target="_blank" rel="noreferrer">
-                    {chunk}
+                    {formatLinkLabel(chunk)}
                   </a>
                 );
               }
@@ -666,7 +676,7 @@ function App() {
             selectable
             firstDay={1}
             locale="en-gb"
-            dayHeaderFormat={{ weekday: "short" }}
+            dayHeaderFormat={{ weekday: "short", day: "2-digit" }}
             views={{
               weekRow: {
                 type: "dayGrid",
