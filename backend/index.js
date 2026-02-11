@@ -294,8 +294,7 @@ app.get("/events", authMiddleware, async (req, res) => {
     }
 
     const result = await pool.query(
-      "SELECT id, title, start_time, end_time, all_day, notes FROM events WHERE user_id = $1 ORDER BY start_time ASC",
-      [req.user.id]
+      "SELECT id, title, start_time, end_time, all_day, notes FROM events ORDER BY start_time ASC"
     );
 
     return res.json({ events: result.rows.map(sanitizeEvent) });
@@ -347,9 +346,9 @@ app.put("/events/:id", authMiddleware, async (req, res) => {
     const result = await pool.query(
       `UPDATE events
        SET title = $1, start_time = $2, end_time = $3, all_day = $4, notes = $5
-       WHERE id = $6 AND user_id = $7
+       WHERE id = $6
        RETURNING id, title, start_time, end_time, all_day, notes`,
-      [title.trim(), start, end || null, Boolean(allDay), notes || "", id, req.user.id]
+      [title.trim(), start, end || null, Boolean(allDay), notes || "", id]
     );
 
     if (!result.rows.length) {
@@ -371,7 +370,7 @@ app.delete("/events/:id", authMiddleware, async (req, res) => {
       return res.status(403).json({ error: "User is not approved" });
     }
 
-    const result = await pool.query("DELETE FROM events WHERE id = $1 AND user_id = $2 RETURNING id", [id, req.user.id]);
+    const result = await pool.query("DELETE FROM events WHERE id = $1 RETURNING id", [id]);
 
     if (!result.rows.length) {
       return res.status(404).json({ error: "Event not found" });

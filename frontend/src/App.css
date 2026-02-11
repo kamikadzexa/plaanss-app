@@ -81,8 +81,9 @@ button:hover {
 }
 
 .calendar-shell {
-  max-width: min(1500px, 100%);
-  margin: 0 auto;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
 }
 
 .calendar-header {
@@ -241,8 +242,82 @@ button:hover {
   margin-bottom: 1em;
 }
 
+
+.fc .fc-daygrid-event .fc-event-title,
+.fc .fc-daygrid-event .fc-event-time,
+.fc .fc-list-event-time,
+.fc .fc-list-event-title {
+  font-size: clamp(0.72rem, 0.6rem + 0.35vw, 0.98rem);
+}
+
+.fc .fc-col-header-cell-cushion {
+  font-size: clamp(0.74rem, 0.62rem + 0.3vw, 1rem);
+}
+
+
+.fc .fc-daygrid-dot-event,
+.fc .fc-daygrid-dot-event:hover {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+}
+
+.fc .fc-daygrid-dot-event .fc-event-time,
+.fc .fc-daygrid-dot-event .fc-event-title {
+  white-space: normal;
+}
+
+.fc .fc-daygrid-dot-event .fc-event-title {
+  overflow: visible;
+}
+
+@media (min-width: 769px) {
+  .fc .fc-weekRow-view .fc-daygrid-day-events {
+    margin-top: 8px;
+  }
+}
+
+.fc .event-status-upcoming .fc-event-dot,
+.fc .event-status-upcoming .fc-daygrid-event-dot,
+.fc .event-status-upcoming .fc-list-event-dot {
+  border-color: #2d63ff;
+  background-color: #2d63ff;
+}
+
+.fc .event-status-live .fc-event-dot,
+.fc .event-status-live .fc-daygrid-event-dot,
+.fc .event-status-live .fc-list-event-dot {
+  border-color: #d13d3d;
+  background-color: #d13d3d;
+}
+
+.fc .event-status-past .fc-event-dot,
+.fc .event-status-past .fc-daygrid-event-dot,
+.fc .event-status-past .fc-list-event-dot {
+  border-color: #8891a7;
+  background-color: #8891a7;
+}
+
+
+.fc .event-status-placeholder .fc-event-dot,
+.fc .event-status-placeholder .fc-daygrid-event-dot,
+.fc .event-status-placeholder .fc-list-event-dot {
+  border-color: #c7cddc;
+  background-color: #c7cddc;
+}
+
+.fc .event-status-placeholder .fc-list-event-time {
+  color: transparent;
+}
+
+.fc .event-status-placeholder .fc-list-event-title {
+  color: #8891a7;
+  font-style: italic;
+}
+
 .calendar-card .fc {
-  min-height: 560px;
+  min-height: 0;
 }
 
 .admin-grid {
@@ -297,7 +372,7 @@ button:hover {
 
   .calendar-header {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
   }
 
   .header-actions {
@@ -311,10 +386,6 @@ button:hover {
 
   .calendar-card {
     padding: 8px;
-  }
-
-  .calendar-card .fc {
-    min-height: 420px;
   }
 
   .calendar-toolbar {
@@ -345,7 +416,7 @@ button:hover {
 
   .fc .fc-toolbar {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
     gap: 8px;
   }
 
@@ -361,8 +432,29 @@ button:hover {
   .fc .fc-daygrid-event,
   .fc .fc-daygrid-event .fc-event-title,
   .fc .fc-daygrid-event .fc-event-time {
-    font-size: 0.72rem;
+    font-size: clamp(0.7rem, 0.66rem + 0.25vw, 0.82rem);
     line-height: 1.1;
+  }
+
+
+  .fc .fc-dayGridMonth-view .fc-daygrid-dot-event {
+    display: block;
+    padding: 2px 4px;
+  }
+
+  .fc .fc-dayGridMonth-view .fc-daygrid-event-dot {
+    display: none;
+  }
+
+  .fc .fc-dayGridMonth-view .fc-daygrid-event .fc-event-time,
+  .fc .fc-dayGridMonth-view .fc-daygrid-event .fc-event-title {
+    display: block;
+    line-height: 1.15;
+  }
+
+  .fc .fc-dayGridMonth-view .fc-daygrid-event .fc-event-title {
+    margin-top: 2px;
+    padding-left: 0;
   }
 
   .fc .fc-list,
@@ -377,4 +469,55 @@ button:hover {
     padding-left: 10px;
     padding-right: 10px;
   }
+
+
+  .fc .fc-listWeek-view .fc-list-event {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+  }
+
+  .fc .fc-listWeek-view .fc-list-event > td {
+    border: none;
+  }
+
+  .fc .fc-listWeek-view .fc-list-event-time {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    padding-right: 6px;
+  }
+
+  .fc .fc-listWeek-view .fc-list-event-time::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #2d63ff;
+    flex: 0 0 7px;
+  }
+
+  .fc .fc-listWeek-view .fc-list-event-title {
+    flex: 1 1 180px;
+    min-width: 0;
+    white-space: normal;
+  }
+
+  .fc .fc-listWeek-view .fc-list-event-dot {
+    display: none;
+  }
+
+  .fc .fc-listWeek-view .event-status-live .fc-list-event-time::before {
+    background: #d13d3d;
+  }
+
+  .fc .fc-listWeek-view .event-status-past .fc-list-event-time::before {
+    background: #8891a7;
+  }
+
+  .fc .fc-listWeek-view .event-status-placeholder .fc-list-event-time::before {
+    background: #c7cddc;
+  }
+
 }

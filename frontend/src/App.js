@@ -93,6 +93,30 @@ const getDurationMinutes = (start, end) => {
   return `${Math.max(5, Math.round((endMs - startMs) / 60000))}`;
 };
 
+const getEventStatus = (eventStart, eventEnd, now = new Date()) => {
+  const start = new Date(eventStart);
+  if (Number.isNaN(start.getTime())) {
+    return "event-status-upcoming";
+  }
+
+  const end = eventEnd ? new Date(eventEnd) : null;
+  const hasValidEnd = end && !Number.isNaN(end.getTime());
+
+  if (now < start) {
+    return "event-status-upcoming";
+  }
+
+  if (hasValidEnd && now >= end) {
+    return "event-status-past";
+  }
+
+  if (hasValidEnd && now >= start && now < end) {
+    return "event-status-live";
+  }
+
+  return "event-status-past";
+};
+
 const formatLinkLabel = (url, maxLength = 42) => {
   if (url.length <= maxLength) {
     return url;
@@ -151,6 +175,8 @@ function App() {
   const [isMobile, setIsMobile] = useState(getInitialIsMobile);
   const [calendarView, setCalendarView] = useState(isMobile ? "listWeek" : "dayGridMonth");
   const weekViewKey = isMobile ? "listWeek" : "weekRow";
+  const [nowTick, setNowTick] = useState(Date.now());
+  const [calendarRangeStart, setCalendarRangeStart] = useState(null);
 
   const [eventDialogMode, setEventDialogMode] = useState(null);
   const [eventForm, setEventForm] = useState(blankEventForm);
@@ -180,6 +206,55 @@ function App() {
       return (a.title || "").localeCompare(b.title || "");
     });
   }, [events]);
+
+
+
+  const eventsForCalendar = useMemo(() => {
+    if (!(isMobile && calendarView === "listWeek")) {
+      return sortedEvents;
+    }
+
+    const start = calendarRangeStart ? new Date(calendarRangeStart) : new Date();
+    const mondayOffset = (start.getDay() + 6) % 7;
+    start.setDate(start.getDate() - mondayOffset);
+    start.setHours(0, 0, 0, 0);
+
+    const placeholders = [];
+
+    for (let index = 0; index < 7; index += 1) {
+      const dayStart = new Date(start);
+      dayStart.setDate(start.getDate() + index);
+
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayStart.getDate() + 1);
+
+      const hasEventOnDay = sortedEvents.some((entry) => {
+        const rawStart = entry.start || entry.startStr;
+        const eventStart = new Date(rawStart);
+
+        if (Number.isNaN(eventStart.getTime())) {
+          return false;
+        }
+
+        return eventStart >= dayStart && eventStart < dayEnd;
+      });
+
+      if (!hasEventOnDay) {
+        const dayKey = dayStart.toISOString().slice(0, 10);
+        placeholders.push({
+          id: `placeholder-${dayKey}`,
+          title: "No events",
+          start: dayStart.toISOString(),
+          allDay: true,
+          extendedProps: {
+            isPlaceholder: true,
+          },
+        });
+      }
+    }
+
+    return [...sortedEvents, ...placeholders];
+  }, [calendarRangeStart, calendarView, isMobile, sortedEvents]);
 
   const parseJsonSafe = async (response) => {
     try {
@@ -223,6 +298,14 @@ function App() {
       calendarApi.changeView(calendarView);
     }
   }, [calendarView]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setNowTick(Date.now());
+    }, 60000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     if (!token) {
@@ -476,6 +559,10 @@ function App() {
   };
 
   const handleEventClick = (clickInfo) => {
+    if (clickInfo.event.extendedProps?.isPlaceholder) {
+      return;
+    }
+
     openEventDetails(clickInfo.event);
   };
 
@@ -669,6 +756,7 @@ function App() {
             initialView={calendarView}
             viewDidMount={(info) => {
               setCalendarView(info.view.type);
+              setCalendarRangeStart(info.view.activeStart?.toISOString() || null);
             }}
             headerToolbar={{
               left: "prev,next today",
@@ -678,7 +766,17 @@ function App() {
             selectable
             firstDay={1}
             locale="en-gb"
-            dayHeaderFormat={{ weekday: "short", day: "2-digit" }}
+            dayHeaderContent={(arg) => {
+              if (arg.view.type === "dayGridMonth") {
+                return new Intl.DateTimeFormat("en-GB", { weekday: "long" }).format(arg.date);
+              }
+
+              return new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "2-digit" }).format(arg.date);
+            }}
+            datesSet={(info) => {
+              setCalendarRangeStart(info.startStr || null);
+              setCalendarView(info.view.type);
+            }}
             views={{
               weekRow: {
                 type: "dayGrid",
@@ -698,20 +796,29 @@ function App() {
                 },
               },
             }}
-            events={sortedEvents}
+            events={eventsForCalendar}
             eventOrder="start,title"
             displayEventTime
+            displayEventEnd={!isMobile || calendarView === "listWeek"}
             eventTimeFormat={{
               hour: "2-digit",
               minute: "2-digit",
               meridiem: false,
             }}
+            eventClassNames={(arg) => {
+              if (arg.event.extendedProps?.isPlaceholder) {
+                return ["event-status-placeholder"];
+              }
+
+              return [getEventStatus(arg.event.start, arg.event.end, new Date(nowTick))];
+            }}
             select={handleDateSelect}
             dateClick={handleDateClick}
             eventClick={handleEventClick}
-            height={isMobile ? "auto" : "calc(100vh - 210px)"}
-            expandRows={!isMobile}
-            dayMaxEventRows={isMobile ? 2 : 4}
+            height="auto"
+            contentHeight="auto"
+            expandRows={false}
+            dayMaxEventRows={false}
             fixedWeekCount={false}
           />
         </section>
