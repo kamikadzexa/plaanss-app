@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -16,6 +16,7 @@ const blankEventForm = {
   startTime: "09:00",
   durationMinutes: "60",
   notes: "",
+  timezoneMode: "user",
 };
 const mobileMediaQuery = "(max-width: 768px)";
 
@@ -60,6 +61,57 @@ const formatDateTimeForInput = (value) => {
     startDate: local.slice(0, 10),
     startTime: local.slice(11, 16),
   };
+};
+
+
+const parseDateParts = (dateValue, timeValue) => {
+  const [year, month, day] = dateValue.split("-").map(Number);
+  const [hours, minutes] = timeValue.split(":").map(Number);
+
+  if ([year, month, day, hours, minutes].some((part) => Number.isNaN(part))) {
+    return null;
+  }
+
+  return { year, month, day, hours, minutes };
+};
+
+const buildUtcIsoFromInput = (dateValue, timeValue, timezoneMode) => {
+  const parsed = parseDateParts(dateValue, timeValue);
+  if (!parsed) {
+    return null;
+  }
+
+  const { year, month, day, hours, minutes } = parsed;
+
+  if (timezoneMode === "msk") {
+    return new Date(Date.UTC(year, month - 1, day, hours - 3, minutes)).toISOString();
+  }
+
+  return new Date(year, month - 1, day, hours, minutes).toISOString();
+};
+
+const formatDateTimeForTimezoneInput = (value, timezoneMode = "user") => {
+  if (!value) {
+    return { startDate: "", startTime: "09:00" };
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return {
+      startDate: getDatePart(value),
+      startTime: getTimePart(value),
+    };
+  }
+
+  if (timezoneMode === "msk") {
+    const mskShifted = new Date(parsed.getTime() + 3 * 60 * 60 * 1000).toISOString();
+    return {
+      startDate: mskShifted.slice(0, 10),
+      startTime: mskShifted.slice(11, 16),
+    };
+  }
+
+  return formatDateTimeForInput(value);
 };
 
 const formatDateTimeEu = (value) => {
@@ -161,7 +213,7 @@ function LinkifiedText({ text }) {
 }
 
 function App() {
-  const [token, setToken] = useState(localStorage.getItem("token") || "");
+  const [token, setToken] = useState("");
   const [user, setUser] = useState(null);
   const [events, setEvents] = useState([]);
   const [authMode, setAuthMode] = useState("login");
@@ -182,12 +234,21 @@ function App() {
   const [eventForm, setEventForm] = useState(blankEventForm);
   const [selectedEvent, setSelectedEvent] = useState(null);
 
-  const authHeader = useMemo(
-    () => ({
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    }),
-    [token]
+  const authHeader = useMemo(() => {
+    const headers = { "Content-Type": "application/json" };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    return headers;
+  }, [token]);
+
+  const apiFetch = useCallback(
+    (path, options = {}) =>
+      fetch(`${API_BASE}${path}`, {
+        credentials: "include",
+        ...options,
+      }),
+    []
   );
 
   const sortedEvents = useMemo(() => {
@@ -308,21 +369,10 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!token) {
-      setUser(null);
-      setEvents([]);
-      setUsers([]);
-      setActivePage("calendar");
-      localStorage.removeItem("token");
-      return;
-    }
-
-    localStorage.setItem("token", token);
-
     const bootstrap = async () => {
       try {
         setError("");
-        const meResponse = await fetch(`${API_BASE}/auth/me`, {
+        const meResponse = await apiFetch(`/auth/me`, {
           headers: authHeader,
         });
 
@@ -334,7 +384,7 @@ function App() {
 
         setUser(meData.user);
 
-        const eventsResponse = await fetch(`${API_BASE}/events`, {
+        const eventsResponse = await apiFetch(`/events`, {
           headers: authHeader,
         });
         const eventsData = await parseJsonSafe(eventsResponse);
@@ -345,13 +395,16 @@ function App() {
 
         setEvents(eventsData.events || []);
       } catch (bootError) {
-        setToken("");
-        setError(bootError.message);
+        setUser(null);
+        setEvents([]);
+        if (token) {
+          setToken("");
+        }
       }
     };
 
     bootstrap();
-  }, [token, authHeader]);
+  }, [apiFetch, authHeader, token]);
 
   const loadAdminUsers = async () => {
     if (!user?.isAdmin) {
@@ -360,7 +413,7 @@ function App() {
 
     try {
       setAdminLoading(true);
-      const response = await fetch(`${API_BASE}/admin/users`, {
+      const response = await apiFetch(`/admin/users`, {
         headers: authHeader,
       });
       const data = await parseJsonSafe(response);
@@ -388,7 +441,7 @@ function App() {
     setError("");
 
     try {
-      const response = await fetch(`${API_BASE}/auth/${authMode}`, {
+      const response = await apiFetch(`/auth/${authMode}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(authForm),
@@ -421,6 +474,7 @@ function App() {
           ...blankEventForm,
           startDate: getDatePart(startValue),
           startTime: getTimePart(startValue, "09:00"),
+          timezoneMode: "user",
         }
       : blankEventForm;
 
@@ -431,6 +485,7 @@ function App() {
   const closeEventDialog = () => {
     setEventDialogMode(null);
     setEventForm(blankEventForm);
+    setSelectedEvent(null);
   };
 
   const handleDateSelect = (selectionInfo) => {
@@ -443,7 +498,7 @@ function App() {
   };
 
   const createEvent = async (draftEvent) => {
-    const response = await fetch(`${API_BASE}/events`, {
+    const response = await apiFetch(`/events`, {
       method: "POST",
       headers: authHeader,
       body: JSON.stringify(draftEvent),
@@ -459,7 +514,7 @@ function App() {
   };
 
   const updateEvent = async (eventId, draftEvent) => {
-    const response = await fetch(`${API_BASE}/events/${eventId}`, {
+    const response = await apiFetch(`/events/${eventId}`, {
       method: "PUT",
       headers: authHeader,
       body: JSON.stringify(draftEvent),
@@ -475,6 +530,21 @@ function App() {
       current.map((entry) => (`${entry.id}` === `${eventId}` ? data.event : entry))
     );
     setSelectedEvent(data.event);
+  };
+
+  const deleteEvent = async (eventId) => {
+    const response = await apiFetch(`/events/${eventId}`, {
+      method: "DELETE",
+      headers: authHeader,
+    });
+
+    if (!response.ok) {
+      const data = await parseJsonSafe(response);
+      throw new Error(data.error || "Could not delete event.");
+    }
+
+    setEvents((current) => current.filter((entry) => `${entry.id}` !== `${eventId}`));
+    setSelectedEvent(null);
   };
 
   const handleEventFormSubmit = async (event) => {
@@ -497,17 +567,17 @@ function App() {
       return;
     }
 
-    const startDateTime = new Date(`${eventForm.startDate}T${eventForm.startTime}`);
-    if (Number.isNaN(startDateTime.getTime())) {
+    const startIso = buildUtcIsoFromInput(eventForm.startDate, eventForm.startTime, eventForm.timezoneMode);
+    if (!startIso) {
       setError("Invalid start date or time.");
       return;
     }
 
-    const endDateTime = new Date(startDateTime.getTime() + duration * 60000);
+    const endDateTime = new Date(new Date(startIso).getTime() + duration * 60000);
 
     const payload = {
       title,
-      start: startDateTime.toISOString(),
+      start: startIso,
       end: endDateTime.toISOString(),
       allDay: false,
       notes: eventForm.notes,
@@ -546,7 +616,8 @@ function App() {
       return;
     }
 
-    const startParts = formatDateTimeForInput(selectedEvent.start);
+    const timezoneMode = eventForm.timezoneMode || "user";
+    const startParts = formatDateTimeForTimezoneInput(selectedEvent.start, timezoneMode);
 
     setEventForm({
       title: selectedEvent.title || "",
@@ -554,6 +625,7 @@ function App() {
       startTime: startParts.startTime,
       durationMinutes: getDurationMinutes(selectedEvent.start, selectedEvent.end),
       notes: selectedEvent.notes || "",
+      timezoneMode,
     });
     setEventDialogMode("edit");
   };
@@ -591,7 +663,7 @@ function App() {
         payload.password = entry.newPassword;
       }
 
-      const response = await fetch(`${API_BASE}/admin/users/${entry.id}`, {
+      const response = await apiFetch(`/admin/users/${entry.id}`, {
         method: "PUT",
         headers: authHeader,
         body: JSON.stringify(payload),
@@ -634,7 +706,13 @@ function App() {
     await loadAdminUsers();
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await apiFetch(`/auth/logout`, { method: "POST" });
+    } catch (logoutError) {
+      // ignore logout network errors
+    }
+
     setToken("");
     setUser(null);
     setEvents([]);
@@ -653,7 +731,7 @@ function App() {
     },
   ];
 
-  if (!token || !user) {
+  if (!user) {
     return (
       <div className="auth-shell">
         <form className="auth-card" onSubmit={handleAuthSubmit}>
@@ -771,7 +849,12 @@ function App() {
                 return new Intl.DateTimeFormat("en-GB", { weekday: "long" }).format(arg.date);
               }
 
-              return new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "2-digit" }).format(arg.date);
+              return new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "2-digit" }).format(arg.date);
+            }}
+            listDayFormat={{
+              weekday: "long",
+              day: "2-digit",
+              month: "2-digit",
             }}
             datesSet={(info) => {
               setCalendarRangeStart(info.startStr || null);
@@ -825,8 +908,8 @@ function App() {
       )}
 
       {eventDialogMode && (
-        <div className="modal-overlay" role="presentation" onClick={closeEventDialog}>
-          <section className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay" role="presentation">
+          <section className="modal-card" role="dialog" aria-modal="true">
             {(eventDialogMode === "create" || eventDialogMode === "edit") && (
               <>
                 <h3>{eventDialogMode === "create" ? "Create event" : "Edit event"}</h3>
@@ -874,6 +957,38 @@ function App() {
                       required
                     />
 
+                    <label>Timezone</label>
+                    <div className="timezone-switch" role="group" aria-label="Timezone selection">
+                      {[
+                        { key: "user", label: "My timezone" },
+                        { key: "msk", label: "MSK (GMT+3)" },
+                      ].map((option) => (
+                        <button
+                          key={option.key}
+                          type="button"
+                          className={eventForm.timezoneMode === option.key ? "is-active" : ""}
+                          onClick={() => {
+                            const nextMode = option.key;
+                            const currentIso = buildUtcIsoFromInput(
+                              eventForm.startDate,
+                              eventForm.startTime,
+                              eventForm.timezoneMode
+                            );
+                            const nextParts = formatDateTimeForTimezoneInput(currentIso, nextMode);
+
+                            setEventForm((current) => ({
+                              ...current,
+                              timezoneMode: nextMode,
+                              startDate: current.startDate ? nextParts.startDate : current.startDate,
+                              startTime: current.startTime ? nextParts.startTime : current.startTime,
+                            }));
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+
                     <label htmlFor="event-duration">Length (minutes)</label>
                     <input
                       id="event-duration"
@@ -906,6 +1021,23 @@ function App() {
                   </div>
                   <div className="event-form-actions">
                     <button type="submit">{eventDialogMode === "create" ? "Create" : "Save"}</button>
+                    {eventDialogMode === "edit" && selectedEvent?.id && (
+                      <button
+                        type="button"
+                        className="danger-button"
+                        onClick={async () => {
+                          try {
+                            await deleteEvent(selectedEvent.id);
+                            closeEventDialog();
+                            setError("");
+                          } catch (deleteError) {
+                            setError(deleteError.message);
+                          }
+                        }}
+                      >
+                        Delete
+                      </button>
+                    )}
                     <button type="button" className="link-button" onClick={closeEventDialog}>
                       Cancel
                     </button>

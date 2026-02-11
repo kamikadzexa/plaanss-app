@@ -194,6 +194,40 @@ button:hover {
   gap: 10px;
 }
 
+
+.danger-button {
+  background: #c13131;
+}
+
+.danger-button:hover {
+  background: #a72626;
+}
+
+.timezone-switch {
+  display: inline-flex;
+  border: 1px solid #d4def8;
+  border-radius: 12px;
+  overflow: hidden;
+  width: fit-content;
+}
+
+.timezone-switch button {
+  border-radius: 0;
+  background: #e9efff;
+  color: #264291;
+  padding: 8px 12px;
+  border-right: 1px solid #d4def8;
+}
+
+.timezone-switch button:last-child {
+  border-right: none;
+}
+
+.timezone-switch .is-active {
+  background: #2d63ff;
+  color: #fff;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -471,22 +505,54 @@ button:hover {
   }
 
 
+  .fc .fc-listWeek-view .fc-list-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0 12px;
+  }
+
+  .fc .fc-listWeek-view .fc-list-table tbody,
   .fc .fc-listWeek-view .fc-list-event {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
+    width: 100%;
   }
 
   .fc .fc-listWeek-view .fc-list-event > td {
     border: none;
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding-top: 0;
+    padding-bottom: 0;
+    text-align: center;
+  }
+
+  .fc .fc-listWeek-view .fc-list-event {
+    display: block;
+    min-width: 100%;
+    max-width: 100%;
+    margin: 0;
+    border: 1px solid #dce3f4;
+    border-radius: 10px;
+    background: #f9fbff;
+    overflow: hidden;
+  }
+
+  .fc .fc-listWeek-view .fc-list-event > td + td {
+    padding-top: 6px;
   }
 
   .fc .fc-listWeek-view .fc-list-event-time {
+    width: 100%;
+    min-width: 0;
     display: inline-flex;
+    justify-content: center;
     align-items: center;
     gap: 6px;
     white-space: nowrap;
-    padding-right: 6px;
+    font-size: 1rem;
+    font-weight: 600;
+    padding: 10px 12px 6px;
   }
 
   .fc .fc-listWeek-view .fc-list-event-time::before {
@@ -499,13 +565,25 @@ button:hover {
   }
 
   .fc .fc-listWeek-view .fc-list-event-title {
-    flex: 1 1 180px;
     min-width: 0;
     white-space: normal;
+    text-align: center;
+    font-size: 1rem;
+    padding: 4px 14px 12px;
+  }
+
+  .fc .fc-listWeek-view .fc-list-event-title a {
+    display: inline;
+    overflow-wrap: anywhere;
   }
 
   .fc .fc-listWeek-view .fc-list-event-dot {
     display: none;
+  }
+
+  .fc .fc-listWeek-view .fc-list-day-cushion {
+    font-size: 1rem;
+    text-align: center;
   }
 
   .fc .fc-listWeek-view .event-status-live .fc-list-event-time::before {

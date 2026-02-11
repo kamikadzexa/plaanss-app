@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const cookieParser = require("cookie-parser");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
@@ -10,20 +11,31 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 const PORT = process.env.PORT || 8000;
 const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-production";
+const COOKIE_NAME = "plaanss_auth";
+const COOKIE_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 
-app.use(cors());
+const allowedOrigin = process.env.CORS_ORIGIN || true;
+
+app.use(
+  cors({
+    origin: allowedOrigin,
+    credentials: true,
+  })
+);
+app.use(cookieParser());
 app.use(express.json());
 
 const issueToken = (user) => jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
 
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
+  const cookieToken = req.cookies?.[COOKIE_NAME];
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.split(" ")[1] : null;
+  const token = bearerToken || cookieToken;
 
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Missing or invalid authorization header" });
+  if (!token) {
+    return res.status(401).json({ error: "Missing authentication token" });
   }
-
-  const token = authHeader.split(" ")[1];
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
@@ -33,6 +45,13 @@ const authMiddleware = (req, res, next) => {
     return res.status(401).json({ error: "Invalid token" });
   }
 };
+
+const buildAuthCookieOptions = () => ({
+  httpOnly: true,
+  sameSite: "lax",
+  secure: process.env.NODE_ENV === "production",
+  maxAge: COOKIE_MAX_AGE_MS,
+});
 
 const adminMiddleware = async (req, res, next) => {
   try {
@@ -56,8 +75,8 @@ const adminMiddleware = async (req, res, next) => {
 const sanitizeEvent = (row) => ({
   id: row.id,
   title: row.title,
-  start: row.start_time,
-  end: row.end_time,
+  start: row.start_time ? new Date(row.start_time).toISOString() : null,
+  end: row.end_time ? new Date(row.end_time).toISOString() : null,
   allDay: row.all_day,
   notes: row.notes || "",
 });
@@ -88,12 +107,23 @@ const initDb = async () => {
       id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       title TEXT NOT NULL,
-      start_time TIMESTAMP NOT NULL,
-      end_time TIMESTAMP,
+      start_time TIMESTAMPTZ NOT NULL,
+      end_time TIMESTAMPTZ,
       all_day BOOLEAN DEFAULT FALSE,
       notes TEXT,
       created_at TIMESTAMP DEFAULT NOW()
     )
+  `);
+
+
+  await pool.query(`
+    ALTER TABLE events
+    ALTER COLUMN start_time TYPE TIMESTAMPTZ USING start_time AT TIME ZONE 'UTC'
+  `);
+
+  await pool.query(`
+    ALTER TABLE events
+    ALTER COLUMN end_time TYPE TIMESTAMPTZ USING end_time AT TIME ZONE 'UTC'
   `);
 
   await pool.query(`
@@ -156,6 +186,7 @@ app.post("/auth/register", async (req, res) => {
     }
 
     const token = issueToken(user);
+    res.cookie(COOKIE_NAME, token, buildAuthCookieOptions());
     return res.status(201).json({ token, user: sanitizeUser(user), requiresApproval: false });
   } catch (error) {
     if (error.code === "23505") {
@@ -192,6 +223,7 @@ app.post("/auth/login", async (req, res) => {
     }
 
     const token = issueToken(user);
+    res.cookie(COOKIE_NAME, token, buildAuthCookieOptions());
     return res.json({ token, user: sanitizeUser(user) });
   } catch (error) {
     return res.status(500).json({ error: "Unable to login" });
@@ -211,6 +243,15 @@ app.get("/auth/me", authMiddleware, async (req, res) => {
   }
 
   return res.json({ user: sanitizeUser(user) });
+});
+
+app.post("/auth/logout", (req, res) => {
+  res.clearCookie(COOKIE_NAME, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
+  return res.status(204).send();
 });
 
 app.get("/admin/users", authMiddleware, adminMiddleware, async (req, res) => {
