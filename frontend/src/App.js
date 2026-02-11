@@ -845,7 +845,7 @@ function App() {
             firstDay={1}
             locale="en-gb"
             dayHeaderContent={(arg) => {
-              if (arg.view.type === "dayGridMonth" || arg.view.type === "weekRow") {
+              if (arg.view.type === "dayGridMonth") {
                 return new Intl.DateTimeFormat("en-GB", { weekday: "long" }).format(arg.date);
               }
 
@@ -957,31 +957,37 @@ function App() {
                       required
                     />
 
-                    <label htmlFor="event-timezone-toggle">Timezone</label>
-                    <label className="timezone-toggle" htmlFor="event-timezone-toggle">
-                      <input
-                        id="event-timezone-toggle"
-                        type="checkbox"
-                        checked={eventForm.timezoneMode === "msk"}
-                        onChange={(e) => {
-                          const nextMode = e.target.checked ? "msk" : "user";
-                          const currentIso = buildUtcIsoFromInput(
-                            eventForm.startDate,
-                            eventForm.startTime,
-                            eventForm.timezoneMode
-                          );
-                          const nextParts = formatDateTimeForTimezoneInput(currentIso, nextMode);
+                    <label>Timezone</label>
+                    <div className="timezone-switch" role="group" aria-label="Timezone selection">
+                      {[
+                        { key: "user", label: "My timezone" },
+                        { key: "msk", label: "MSK (GMT+3)" },
+                      ].map((option) => (
+                        <button
+                          key={option.key}
+                          type="button"
+                          className={eventForm.timezoneMode === option.key ? "is-active" : ""}
+                          onClick={() => {
+                            const nextMode = option.key;
+                            const currentIso = buildUtcIsoFromInput(
+                              eventForm.startDate,
+                              eventForm.startTime,
+                              eventForm.timezoneMode
+                            );
+                            const nextParts = formatDateTimeForTimezoneInput(currentIso, nextMode);
 
-                          setEventForm((current) => ({
-                            ...current,
-                            timezoneMode: nextMode,
-                            startDate: current.startDate ? nextParts.startDate : current.startDate,
-                            startTime: current.startTime ? nextParts.startTime : current.startTime,
-                          }));
-                        }}
-                      />
-                      <span>{eventForm.timezoneMode === "msk" ? "MSK (GMT+3)" : "My timezone"}</span>
-                    </label>
+                            setEventForm((current) => ({
+                              ...current,
+                              timezoneMode: nextMode,
+                              startDate: current.startDate ? nextParts.startDate : current.startDate,
+                              startTime: current.startTime ? nextParts.startTime : current.startTime,
+                            }));
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
 
                     <label htmlFor="event-duration">Length (minutes)</label>
                     <input

@@ -203,16 +203,29 @@ button:hover {
   background: #a72626;
 }
 
-.timezone-toggle {
+.timezone-switch {
   display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 500;
+  border: 1px solid #d4def8;
+  border-radius: 12px;
+  overflow: hidden;
+  width: fit-content;
 }
 
-.timezone-toggle input {
-  width: 18px;
-  height: 18px;
+.timezone-switch button {
+  border-radius: 0;
+  background: #e9efff;
+  color: #264291;
+  padding: 8px 12px;
+  border-right: 1px solid #d4def8;
+}
+
+.timezone-switch button:last-child {
+  border-right: none;
+}
+
+.timezone-switch .is-active {
+  background: #2d63ff;
+  color: #fff;
 }
 
 .modal-overlay {
