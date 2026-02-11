@@ -12,7 +12,7 @@ Dockerized full-stack calendar app with authentication.
 
 ## Run on Ubuntu VPS with Docker Compose
 
-1. Install Docker + Compose plugin:
+1. Install Docker Engine + Compose plugin (Compose v2):
    ```bash
    sudo apt update
    sudo apt install -y docker.io docker-compose-plugin
@@ -31,9 +31,38 @@ Dockerized full-stack calendar app with authentication.
    - Frontend: `http://YOUR_VPS_IP:3000`
    - Backend health: `http://YOUR_VPS_IP:8000/health`
 
+## Important Compose note
+Use `docker compose` (plugin/v2), not legacy `docker-compose` (python/v1).
+
+If you run into this error:
+
+```text
+KeyError: 'ContainerConfig'
+```
+
+it is typically caused by old `docker-compose` v1 metadata compatibility issues. Fix with:
+
+```bash
+# Stop and clean old stack state
+docker compose down --remove-orphans
+
+# If containers were created by old docker-compose v1, remove them
+docker rm -f $(docker ps -aq --filter "name=plaanss-app") 2>/dev/null || true
+
+# Optionally remove stale images and rebuild
+docker image prune -f
+docker compose up --build -d
+```
+
+If your server still defaults to the old binary, prefer explicit plugin invocation:
+
+```bash
+docker compose version
+```
+
 ## Environment notes
 - Change `JWT_SECRET` in `docker-compose.yml` before production use.
-- For domain/proxy deployments, set `REACT_APP_API_URL` to your backend URL.
+- By default, the frontend targets `http(s)://<current-host>:8000`, which works for VPS access without hardcoding localhost.
 
 ## Useful commands
 ```bash
