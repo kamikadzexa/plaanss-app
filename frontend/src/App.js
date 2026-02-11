@@ -193,7 +193,7 @@ function App() {
     }
   };
 
-  const handleDateSelect = async (selectionInfo) => {
+  const createEvent = async ({ start, end, allDay }) => {
     const title = window.prompt("Event title:");
     if (!title) {
       return;
@@ -203,9 +203,9 @@ function App() {
 
     const draftEvent = {
       title,
-      start: selectionInfo.startStr,
-      end: selectionInfo.endStr,
-      allDay: selectionInfo.allDay,
+      start,
+      end,
+      allDay,
       notes,
     };
 
@@ -227,6 +227,28 @@ function App() {
     } catch (eventError) {
       setError(eventError.message);
     }
+  };
+
+  const handleDateSelect = async (selectionInfo) => {
+    await createEvent({
+      start: selectionInfo.startStr,
+      end: selectionInfo.endStr,
+      allDay: selectionInfo.allDay,
+    });
+
+    selectionInfo.view.calendar.unselect();
+  };
+
+  const handleDateClick = async (dateInfo) => {
+    if (!isMobile) {
+      return;
+    }
+
+    await createEvent({
+      start: dateInfo.dateStr,
+      end: dateInfo.dateStr,
+      allDay: true,
+    });
   };
 
   const handleEventClick = async (clickInfo) => {
@@ -463,8 +485,10 @@ function App() {
             selectable
             events={events}
             select={handleDateSelect}
+            dateClick={handleDateClick}
             eventClick={handleEventClick}
-            height="auto"
+            height={isMobile ? "auto" : "calc(100vh - 210px)"}
+            expandRows={!isMobile}
             dayMaxEventRows={isMobile ? 2 : 4}
             fixedWeekCount={!isMobile}
           />

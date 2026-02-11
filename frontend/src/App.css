@@ -72,7 +72,7 @@ button:hover {
 }
 
 .calendar-shell {
-  max-width: 1180px;
+  max-width: min(1500px, 100%);
   margin: 0 auto;
 }
 
@@ -102,7 +102,7 @@ button:hover {
 .calendar-card {
   background: #fff;
   border-radius: 14px;
-  padding: 16px;
+  padding: 20px;
   box-shadow: 0 20px 40px rgba(20, 22, 50, 0.08);
   overflow: hidden;
 }
@@ -148,6 +148,10 @@ button:hover {
 
 .fc .fc-toolbar.fc-header-toolbar {
   margin-bottom: 1em;
+}
+
+.calendar-card .fc {
+  min-height: 560px;
 }
 
 .admin-grid {
@@ -216,6 +220,10 @@ button:hover {
 
   .calendar-card {
     padding: 12px;
+  }
+
+  .calendar-card .fc {
+    min-height: 420px;
   }
 
   .calendar-toolbar {
