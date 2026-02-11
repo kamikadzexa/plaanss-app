@@ -244,8 +244,14 @@ button:hover {
 
 
 .fc .fc-daygrid-event .fc-event-title,
-.fc .fc-daygrid-event .fc-event-time {
-  font-size: 0.82rem;
+.fc .fc-daygrid-event .fc-event-time,
+.fc .fc-list-event-time,
+.fc .fc-list-event-title {
+  font-size: clamp(0.72rem, 0.6rem + 0.35vw, 0.98rem);
+}
+
+.fc .fc-col-header-cell-cushion {
+  font-size: clamp(0.74rem, 0.62rem + 0.3vw, 1rem);
 }
 
 @media (min-width: 769px) {
@@ -408,7 +414,7 @@ button:hover {
   .fc .fc-daygrid-event,
   .fc .fc-daygrid-event .fc-event-title,
   .fc .fc-daygrid-event .fc-event-time {
-    font-size: 0.72rem;
+    font-size: clamp(0.7rem, 0.66rem + 0.25vw, 0.82rem);
     line-height: 1.1;
   }
 

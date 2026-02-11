@@ -766,7 +766,13 @@ function App() {
             selectable
             firstDay={1}
             locale="en-gb"
-            dayHeaderFormat={{ weekday: "short", day: "2-digit" }}
+            dayHeaderContent={(arg) => {
+              if (arg.view.type === "dayGridMonth") {
+                return new Intl.DateTimeFormat("en-GB", { weekday: "long" }).format(arg.date);
+              }
+
+              return new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "2-digit" }).format(arg.date);
+            }}
             datesSet={(info) => {
               setCalendarRangeStart(info.startStr || null);
               setCalendarView(info.view.type);
@@ -793,6 +799,7 @@ function App() {
             events={eventsForCalendar}
             eventOrder="start,title"
             displayEventTime
+            displayEventEnd={!isMobile}
             eventTimeFormat={{
               hour: "2-digit",
               minute: "2-digit",
