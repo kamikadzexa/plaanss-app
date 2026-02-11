@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -9,6 +9,13 @@ const API_BASE =
   `${window.location.protocol}//${window.location.hostname}:8000`;
 
 const blankAuth = { email: "", password: "" };
+const mobileMediaQuery = "(max-width: 768px)";
+
+const getInitialIsMobile = () =>
+  typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia(mobileMediaQuery).matches
+    : false;
+
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem("token") || "");
@@ -21,6 +28,9 @@ function App() {
   const [activePage, setActivePage] = useState("calendar");
   const [users, setUsers] = useState([]);
   const [adminLoading, setAdminLoading] = useState(false);
+  const calendarRef = useRef(null);
+  const [isMobile, setIsMobile] = useState(getInitialIsMobile);
+  const [calendarView, setCalendarView] = useState(isMobile ? "dayGridDay" : "dayGridMonth");
 
   const authHeader = useMemo(
     () => ({
@@ -37,6 +47,43 @@ function App() {
       return {};
     }
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return undefined;
+    }
+
+    const mediaQueryList = window.matchMedia(mobileMediaQuery);
+
+    const handleViewportChange = (event) => {
+      setIsMobile(event.matches);
+      setCalendarView((currentView) => {
+        if (event.matches && currentView === "dayGridMonth") {
+          return "dayGridDay";
+        }
+
+        if (!event.matches && currentView === "dayGridDay") {
+          return "dayGridMonth";
+        }
+
+        return currentView;
+      });
+    };
+
+    mediaQueryList.addEventListener("change", handleViewportChange);
+
+    return () => mediaQueryList.removeEventListener("change", handleViewportChange);
+  }, []);
+
+
+
+  useEffect(() => {
+    const calendarApi = calendarRef.current?.getApi();
+
+    if (calendarApi && calendarApi.view.type !== calendarView) {
+      calendarApi.changeView(calendarView);
+    }
+  }, [calendarView]);
 
   useEffect(() => {
     if (!token) {
@@ -203,7 +250,9 @@ function App() {
         throw new Error(data.error || "Could not delete event.");
       }
 
-      setEvents((current) => current.filter((calendarEvent) => `${calendarEvent.id}` !== `${eventId}`));
+      setEvents((current) =>
+        current.filter((calendarEvent) => `${calendarEvent.id}` !== `${eventId}`)
+      );
       setError("");
     } catch (eventError) {
       setError(eventError.message);
@@ -286,6 +335,21 @@ function App() {
     setActivePage("calendar");
   };
 
+  const calendarViews = [
+    {
+      key: "dayGridMonth",
+      label: "Month",
+    },
+    {
+      key: "dayGridWeek",
+      label: isMobile ? "Week" : "Week view",
+    },
+    {
+      key: "dayGridDay",
+      label: isMobile ? "Day" : "Day view",
+    },
+  ];
+
   if (!token || !user) {
     return (
       <div className="auth-shell">
@@ -362,14 +426,47 @@ function App() {
 
       {activePage === "calendar" && (
         <section className="calendar-card">
+          <div className="calendar-toolbar">
+            <div className="view-switcher" role="group" aria-label="Calendar view switcher">
+              {calendarViews.map((view) => (
+                <button
+                  key={view.key}
+                  type="button"
+                  className={calendarView === view.key ? "is-active" : ""}
+                  onClick={() => {
+                    setCalendarView(view.key);
+                    calendarRef.current?.getApi().changeView(view.key);
+                  }}
+                >
+                  {view.label}
+                </button>
+              ))}
+            </div>
+            <p className="calendar-tip">
+              {isMobile
+                ? "Mobile mode: use Day or Week for easier reading."
+                : "Desktop mode: month view gives a full overview."}
+            </p>
+          </div>
           <FullCalendar
+            ref={calendarRef}
             plugins={[dayGridPlugin, interactionPlugin]}
-            initialView="dayGridMonth"
+            initialView={calendarView}
+            viewDidMount={(info) => {
+              setCalendarView(info.view.type);
+            }}
+            headerToolbar={{
+              left: "prev,next today",
+              center: "title",
+              right: "",
+            }}
             selectable
             events={events}
             select={handleDateSelect}
             eventClick={handleEventClick}
             height="auto"
+            dayMaxEventRows={isMobile ? 2 : 4}
+            fixedWeekCount={!isMobile}
           />
         </section>
       )}

@@ -104,6 +104,50 @@ button:hover {
   border-radius: 14px;
   padding: 16px;
   box-shadow: 0 20px 40px rgba(20, 22, 50, 0.08);
+  overflow: hidden;
+}
+
+.calendar-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.view-switcher {
+  display: inline-flex;
+  border: 1px solid #d4def8;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.view-switcher button {
+  border-radius: 0;
+  background: #e9efff;
+  color: #264291;
+  padding: 8px 12px;
+  border-right: 1px solid #d4def8;
+}
+
+.view-switcher button:last-child {
+  border-right: none;
+}
+
+.view-switcher .is-active {
+  background: #2d63ff;
+  color: #fff;
+}
+
+.calendar-tip {
+  margin: 0;
+  color: #5b6275;
+  font-size: 0.9rem;
+}
+
+.fc .fc-toolbar.fc-header-toolbar {
+  margin-bottom: 1em;
 }
 
 .admin-grid {
@@ -143,5 +187,67 @@ button:hover {
 
   .admin-grid-head {
     display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .auth-shell,
+  .calendar-shell {
+    padding: 14px;
+  }
+
+  .auth-card {
+    padding: 20px;
+  }
+
+  .calendar-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
+
+  .header-actions button {
+    flex: 1;
+    min-width: 110px;
+  }
+
+  .calendar-card {
+    padding: 12px;
+  }
+
+  .calendar-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .view-switcher {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .view-switcher button {
+    width: 100%;
+    text-align: center;
+    font-size: 0.85rem;
+    padding: 9px 6px;
+  }
+
+  .fc .fc-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .fc .fc-toolbar-title {
+    font-size: 1.1rem;
+  }
+
+  .fc .fc-button {
+    padding: 0.3em 0.6em;
+    font-size: 0.82rem;
   }
 }
