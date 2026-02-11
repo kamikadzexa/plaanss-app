@@ -29,6 +29,7 @@ Dockerized full-stack calendar app with authentication.
    ```
 4. Open:
    - Frontend: `http://YOUR_VPS_IP:3000`
+   - Backend root: `http://YOUR_VPS_IP:8000`
    - Backend health: `http://YOUR_VPS_IP:8000/health`
 
 ## User approval and admin management

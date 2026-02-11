@@ -107,6 +107,14 @@ const initDb = async () => {
   `);
 };
 
+app.get("/", (req, res) => {
+  res.json({
+    name: "Plaanss API",
+    status: "ok",
+    health: "/health",
+  });
+});
+
 app.get("/health", async (req, res) => {
   try {
     await pool.query("SELECT 1");
