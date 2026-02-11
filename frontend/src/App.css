@@ -471,17 +471,18 @@ button:hover {
   }
 
 
-  .fc .fc-listWeek-view .fc-list-event {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
+  .fc .fc-listWeek-view .fc-list-table {
+    table-layout: fixed;
   }
 
   .fc .fc-listWeek-view .fc-list-event > td {
     border: none;
+    vertical-align: top;
   }
 
   .fc .fc-listWeek-view .fc-list-event-time {
+    width: 78px;
+    min-width: 78px;
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -499,9 +500,14 @@ button:hover {
   }
 
   .fc .fc-listWeek-view .fc-list-event-title {
-    flex: 1 1 180px;
+    width: calc(100% - 78px);
     min-width: 0;
     white-space: normal;
+  }
+
+  .fc .fc-listWeek-view .fc-list-event-title a {
+    display: block;
+    overflow-wrap: anywhere;
   }
 
   .fc .fc-listWeek-view .fc-list-event-dot {
