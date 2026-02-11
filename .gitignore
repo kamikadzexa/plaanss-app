@@ -1,0 +1,10 @@
+# Node dependencies
+node_modules/
+.env
+
+# Docker
+docker-compose.override.yml
+
+# OS / editor
+.DS_Store
+.vscode/
