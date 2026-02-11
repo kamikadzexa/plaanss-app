@@ -61,6 +61,26 @@ const formatDateTimeForInput = (value) => {
   };
 };
 
+const formatDateTimeEu = (value) => {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  const weekday = new Intl.DateTimeFormat("en-GB", { weekday: "short" }).format(date);
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  return `${weekday}, ${day}.${month}.${year}, ${hours}:${minutes}`;
+};
+
 const getDurationMinutes = (start, end) => {
   const startMs = Date.parse(start);
   const endMs = Date.parse(end);
@@ -645,6 +665,8 @@ function App() {
             }}
             selectable
             firstDay={1}
+            locale="en-gb"
+            dayHeaderFormat={{ weekday: "short" }}
             views={{
               weekRow: {
                 type: "dayGrid",
@@ -777,10 +799,10 @@ function App() {
               <>
                 <h3>{selectedEvent.title}</h3>
                 <p className="event-time-row">
-                  Starts: {selectedEvent.start ? new Date(selectedEvent.start).toLocaleString() : "-"}
+                  Starts: {formatDateTimeEu(selectedEvent.start)}
                 </p>
                 <p className="event-time-row">
-                  Ends: {selectedEvent.end ? new Date(selectedEvent.end).toLocaleString() : "-"}
+                  Ends: {formatDateTimeEu(selectedEvent.end)}
                 </p>
                 <h4>Description</h4>
                 <LinkifiedText text={selectedEvent.notes} />
