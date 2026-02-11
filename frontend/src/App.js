@@ -650,6 +650,18 @@ function App() {
                 type: "dayGrid",
                 duration: { days: 7 },
                 dateAlignment: "week",
+                fixedWeekCount: false,
+                visibleRange(currentDate) {
+                  const start = new Date(currentDate);
+                  const mondayOffset = (start.getDay() + 6) % 7;
+                  start.setDate(start.getDate() - mondayOffset);
+                  start.setHours(0, 0, 0, 0);
+
+                  const end = new Date(start);
+                  end.setDate(end.getDate() + 7);
+
+                  return { start, end };
+                },
               },
             }}
             events={sortedEvents}
@@ -666,7 +678,7 @@ function App() {
             height={isMobile ? "auto" : "calc(100vh - 210px)"}
             expandRows={!isMobile}
             dayMaxEventRows={isMobile ? 2 : 4}
-            fixedWeekCount={!isMobile}
+            fixedWeekCount={false}
           />
         </section>
       )}
