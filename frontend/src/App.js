@@ -485,6 +485,7 @@ function App() {
   const closeEventDialog = () => {
     setEventDialogMode(null);
     setEventForm(blankEventForm);
+    setSelectedEvent(null);
   };
 
   const handleDateSelect = (selectionInfo) => {
@@ -529,6 +530,21 @@ function App() {
       current.map((entry) => (`${entry.id}` === `${eventId}` ? data.event : entry))
     );
     setSelectedEvent(data.event);
+  };
+
+  const deleteEvent = async (eventId) => {
+    const response = await apiFetch(`/events/${eventId}`, {
+      method: "DELETE",
+      headers: authHeader,
+    });
+
+    if (!response.ok) {
+      const data = await parseJsonSafe(response);
+      throw new Error(data.error || "Could not delete event.");
+    }
+
+    setEvents((current) => current.filter((entry) => `${entry.id}` !== `${eventId}`));
+    setSelectedEvent(null);
   };
 
   const handleEventFormSubmit = async (event) => {
@@ -600,7 +616,7 @@ function App() {
       return;
     }
 
-    const timezoneMode = "user";
+    const timezoneMode = eventForm.timezoneMode || "user";
     const startParts = formatDateTimeForTimezoneInput(selectedEvent.start, timezoneMode);
 
     setEventForm({
@@ -829,11 +845,16 @@ function App() {
             firstDay={1}
             locale="en-gb"
             dayHeaderContent={(arg) => {
-              if (arg.view.type === "dayGridMonth") {
+              if (arg.view.type === "dayGridMonth" || arg.view.type === "weekRow") {
                 return new Intl.DateTimeFormat("en-GB", { weekday: "long" }).format(arg.date);
               }
 
-              return new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "2-digit" }).format(arg.date);
+              return new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "2-digit" }).format(arg.date);
+            }}
+            listDayFormat={{
+              weekday: "long",
+              day: "2-digit",
+              month: "2-digit",
             }}
             datesSet={(info) => {
               setCalendarRangeStart(info.startStr || null);
@@ -887,8 +908,8 @@ function App() {
       )}
 
       {eventDialogMode && (
-        <div className="modal-overlay" role="presentation" onClick={closeEventDialog}>
-          <section className="modal-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay" role="presentation">
+          <section className="modal-card" role="dialog" aria-modal="true">
             {(eventDialogMode === "create" || eventDialogMode === "edit") && (
               <>
                 <h3>{eventDialogMode === "create" ? "Create event" : "Edit event"}</h3>
@@ -936,30 +957,31 @@ function App() {
                       required
                     />
 
-                    <label htmlFor="event-timezone-mode">Timezone</label>
-                    <select
-                      id="event-timezone-mode"
-                      value={eventForm.timezoneMode}
-                      onChange={(e) => {
-                        const nextMode = e.target.value;
-                        const currentIso = buildUtcIsoFromInput(
-                          eventForm.startDate,
-                          eventForm.startTime,
-                          eventForm.timezoneMode
-                        );
-                        const nextParts = formatDateTimeForTimezoneInput(currentIso, nextMode);
+                    <label htmlFor="event-timezone-toggle">Timezone</label>
+                    <label className="timezone-toggle" htmlFor="event-timezone-toggle">
+                      <input
+                        id="event-timezone-toggle"
+                        type="checkbox"
+                        checked={eventForm.timezoneMode === "msk"}
+                        onChange={(e) => {
+                          const nextMode = e.target.checked ? "msk" : "user";
+                          const currentIso = buildUtcIsoFromInput(
+                            eventForm.startDate,
+                            eventForm.startTime,
+                            eventForm.timezoneMode
+                          );
+                          const nextParts = formatDateTimeForTimezoneInput(currentIso, nextMode);
 
-                        setEventForm((current) => ({
-                          ...current,
-                          timezoneMode: nextMode,
-                          startDate: current.startDate ? nextParts.startDate : current.startDate,
-                          startTime: current.startTime ? nextParts.startTime : current.startTime,
-                        }));
-                      }}
-                    >
-                      <option value="user">My timezone</option>
-                      <option value="msk">MSK (GMT+3)</option>
-                    </select>
+                          setEventForm((current) => ({
+                            ...current,
+                            timezoneMode: nextMode,
+                            startDate: current.startDate ? nextParts.startDate : current.startDate,
+                            startTime: current.startTime ? nextParts.startTime : current.startTime,
+                          }));
+                        }}
+                      />
+                      <span>{eventForm.timezoneMode === "msk" ? "MSK (GMT+3)" : "My timezone"}</span>
+                    </label>
 
                     <label htmlFor="event-duration">Length (minutes)</label>
                     <input
@@ -993,6 +1015,23 @@ function App() {
                   </div>
                   <div className="event-form-actions">
                     <button type="submit">{eventDialogMode === "create" ? "Create" : "Save"}</button>
+                    {eventDialogMode === "edit" && selectedEvent?.id && (
+                      <button
+                        type="button"
+                        className="danger-button"
+                        onClick={async () => {
+                          try {
+                            await deleteEvent(selectedEvent.id);
+                            closeEventDialog();
+                            setError("");
+                          } catch (deleteError) {
+                            setError(deleteError.message);
+                          }
+                        }}
+                      >
+                        Delete
+                      </button>
+                    )}
                     <button type="button" className="link-button" onClick={closeEventDialog}>
                       Cancel
                     </button>

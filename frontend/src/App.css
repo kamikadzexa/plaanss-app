@@ -194,6 +194,27 @@ button:hover {
   gap: 10px;
 }
 
+
+.danger-button {
+  background: #c13131;
+}
+
+.danger-button:hover {
+  background: #a72626;
+}
+
+.timezone-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.timezone-toggle input {
+  width: 18px;
+  height: 18px;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -500,13 +521,14 @@ button:hover {
   }
 
   .fc .fc-listWeek-view .fc-list-event-title {
-    width: calc(100% - 78px);
     min-width: 0;
     white-space: normal;
+    padding-left: 4px;
+    text-align: left;
   }
 
   .fc .fc-listWeek-view .fc-list-event-title a {
-    display: block;
+    display: inline;
     overflow-wrap: anywhere;
   }
 
