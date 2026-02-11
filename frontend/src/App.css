@@ -81,8 +81,9 @@ button:hover {
 }
 
 .calendar-shell {
-  max-width: min(1500px, 100%);
-  margin: 0 auto;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
 }
 
 .calendar-header {
@@ -239,6 +240,18 @@ button:hover {
 
 .fc .fc-toolbar.fc-header-toolbar {
   margin-bottom: 1em;
+}
+
+
+.fc .fc-daygrid-event .fc-event-title,
+.fc .fc-daygrid-event .fc-event-time {
+  font-size: 0.82rem;
+}
+
+@media (min-width: 769px) {
+  .fc .fc-weekRow-view .fc-daygrid-day-events {
+    margin-top: 8px;
+  }
 }
 
 .fc .event-status-upcoming .fc-event-dot,
