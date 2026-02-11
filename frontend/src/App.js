@@ -118,7 +118,7 @@ function App() {
   const [adminLoading, setAdminLoading] = useState(false);
   const calendarRef = useRef(null);
   const [isMobile, setIsMobile] = useState(getInitialIsMobile);
-  const [calendarView, setCalendarView] = useState(isMobile ? "dayGridDay" : "dayGridMonth");
+  const [calendarView, setCalendarView] = useState(isMobile ? "weekRow" : "dayGridMonth");
 
   const [eventDialogMode, setEventDialogMode] = useState(null);
   const [eventForm, setEventForm] = useState(blankEventForm);
@@ -168,10 +168,10 @@ function App() {
       setIsMobile(event.matches);
       setCalendarView((currentView) => {
         if (event.matches && currentView === "dayGridMonth") {
-          return "dayGridDay";
+          return "weekRow";
         }
 
-        if (!event.matches && currentView === "dayGridDay") {
+        if (!event.matches && currentView === "weekRow") {
           return "dayGridMonth";
         }
 
@@ -529,12 +529,8 @@ function App() {
       label: "Month",
     },
     {
-      key: "dayGridWeek",
-      label: isMobile ? "Week" : "Week view",
-    },
-    {
-      key: "dayGridDay",
-      label: isMobile ? "Day" : "Day view",
+      key: "weekRow",
+      label: "Week",
     },
   ];
 
@@ -649,15 +645,27 @@ function App() {
             }}
             selectable
             firstDay={1}
+            views={{
+              weekRow: {
+                type: "dayGrid",
+                duration: { days: 7 },
+                dateAlignment: "week",
+              },
+            }}
             events={sortedEvents}
             eventOrder="start,title"
-            displayEventTime={false}
+            displayEventTime
+            eventTimeFormat={{
+              hour: "2-digit",
+              minute: "2-digit",
+              meridiem: false,
+            }}
             select={handleDateSelect}
             dateClick={handleDateClick}
             eventClick={handleEventClick}
             height={isMobile ? "auto" : "calc(100vh - 210px)"}
             expandRows={!isMobile}
-            dayMaxEventRows={isMobile ? 2 : 5}
+            dayMaxEventRows={isMobile ? 2 : 4}
             fixedWeekCount={!isMobile}
           />
         </section>
