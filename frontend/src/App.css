@@ -506,15 +506,22 @@ button:hover {
 
 
   .fc .fc-listWeek-view .fc-list-table {
+    width: 100%;
     table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0 12px;
+  }
+
+  .fc .fc-listWeek-view .fc-list-table tbody,
+  .fc .fc-listWeek-view .fc-list-event {
+    width: 100%;
   }
 
   .fc .fc-listWeek-view .fc-list-event > td {
     border: none;
     display: block;
     width: 100%;
+    box-sizing: border-box;
     padding-top: 0;
     padding-bottom: 0;
     text-align: center;
@@ -522,7 +529,9 @@ button:hover {
 
   .fc .fc-listWeek-view .fc-list-event {
     display: block;
-    width: 100%;
+    min-width: 100%;
+    max-width: 100%;
+    margin: 0;
     border: 1px solid #dce3f4;
     border-radius: 10px;
     background: #f9fbff;
