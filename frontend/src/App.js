@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import listPlugin from "@fullcalendar/list";
 import "./App.css";
 
 const API_BASE =
@@ -148,7 +149,8 @@ function App() {
   const [adminLoading, setAdminLoading] = useState(false);
   const calendarRef = useRef(null);
   const [isMobile, setIsMobile] = useState(getInitialIsMobile);
-  const [calendarView, setCalendarView] = useState(isMobile ? "weekRow" : "dayGridMonth");
+  const [calendarView, setCalendarView] = useState(isMobile ? "listWeek" : "dayGridMonth");
+  const weekViewKey = isMobile ? "listWeek" : "weekRow";
 
   const [eventDialogMode, setEventDialogMode] = useState(null);
   const [eventForm, setEventForm] = useState(blankEventForm);
@@ -197,12 +199,12 @@ function App() {
     const handleViewportChange = (event) => {
       setIsMobile(event.matches);
       setCalendarView((currentView) => {
-        if (event.matches && currentView === "dayGridMonth") {
+        if (event.matches) {
+          if (currentView === "dayGridMonth" || currentView === "weekRow") {
+            return "listWeek";
+          }
+        } else if (currentView === "listWeek") {
           return "weekRow";
-        }
-
-        if (!event.matches && currentView === "weekRow") {
-          return "dayGridMonth";
         }
 
         return currentView;
@@ -559,7 +561,7 @@ function App() {
       label: "Month",
     },
     {
-      key: "weekRow",
+      key: weekViewKey,
       label: "Week",
     },
   ];
@@ -663,7 +665,7 @@ function App() {
 
           <FullCalendar
             ref={calendarRef}
-            plugins={[dayGridPlugin, interactionPlugin]}
+            plugins={[dayGridPlugin, interactionPlugin, listPlugin]}
             initialView={calendarView}
             viewDidMount={(info) => {
               setCalendarView(info.view.type);

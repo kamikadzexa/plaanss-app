@@ -288,7 +288,7 @@ button:hover {
 @media (max-width: 768px) {
   .auth-shell,
   .calendar-shell {
-    padding: 14px;
+    padding: 8px;
   }
 
   .auth-card {
@@ -310,7 +310,7 @@ button:hover {
   }
 
   .calendar-card {
-    padding: 12px;
+    padding: 8px;
   }
 
   .calendar-card .fc {
@@ -356,5 +356,25 @@ button:hover {
   .fc .fc-button {
     padding: 0.3em 0.6em;
     font-size: 0.82rem;
+  }
+
+  .fc .fc-daygrid-event,
+  .fc .fc-daygrid-event .fc-event-title,
+  .fc .fc-daygrid-event .fc-event-time {
+    font-size: 0.72rem;
+    line-height: 1.1;
+  }
+
+  .fc .fc-list,
+  .fc .fc-list-table,
+  .fc .fc-list-day,
+  .fc .fc-list-event {
+    width: 100%;
+  }
+
+  .fc .fc-list-day-cushion,
+  .fc .fc-list-event td {
+    padding-left: 10px;
+    padding-right: 10px;
   }
 }
