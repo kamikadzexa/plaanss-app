@@ -756,6 +756,16 @@ button:hover {
   grid-column: 2;
 }
 
+.timezone-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timezone-input-wrap input {
+  min-width: 0;
+}
+
 .telegram-subscription-block,
 .password-block {
   border: 1px solid #dce3f4;
@@ -787,6 +797,11 @@ button:hover {
 @media (max-width: 768px) {
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+
+  .timezone-input-wrap {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .settings-actions {

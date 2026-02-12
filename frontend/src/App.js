@@ -40,6 +40,21 @@ const detectBrowserTimezone = () => {
   }
 };
 
+const getAvailableTimezones = () => {
+  try {
+    if (typeof Intl.supportedValuesOf === "function") {
+      const values = Intl.supportedValuesOf("timeZone");
+      if (Array.isArray(values) && values.length) {
+        return values.includes("UTC") ? values : ["UTC", ...values];
+      }
+    }
+  } catch (error) {
+    // no-op fallback below
+  }
+
+  return ["UTC", "Europe/Riga", "Europe/London", "Europe/Berlin", "America/New_York", "Asia/Tokyo"];
+};
+
 const getInitialIsMobile = () =>
   typeof window !== "undefined" && typeof window.matchMedia === "function"
     ? window.matchMedia(mobileMediaQuery).matches
@@ -291,6 +306,7 @@ function App() {
   const [eventDialogMode, setEventDialogMode] = useState(null);
   const [eventForm, setEventForm] = useState(blankEventForm);
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const timezoneOptions = useMemo(() => getAvailableTimezones(), []);
 
   const authHeader = useMemo(() => {
     const headers = { "Content-Type": "application/json" };
@@ -1199,6 +1215,12 @@ function App() {
 
       {error && <p className="error-text">{error}</p>}
 
+      <datalist id="timezone-options">
+        {timezoneOptions.map((timezone) => (
+          <option key={timezone} value={timezone} />
+        ))}
+      </datalist>
+
       {activePage === "calendar" && (
         <section className="calendar-card">
           <div className="calendar-toolbar">
@@ -1626,11 +1648,21 @@ function App() {
                         {entry.telegramStatus === "connected" ? "Connected" : "Not connected"}
                       </span>
                     </div>
-                    <input
-                      value={entry.timezone || "UTC"}
-                      onChange={(e) => updateUserDraft(entry.id, { timezone: e.target.value })}
-                      placeholder="e.g. Europe/Riga"
-                    />
+                    <div className="timezone-input-wrap">
+                      <input
+                        value={entry.timezone || "UTC"}
+                        onChange={(e) => updateUserDraft(entry.id, { timezone: e.target.value })}
+                        placeholder="Search timezone"
+                        list="timezone-options"
+                      />
+                      <button
+                        type="button"
+                        className="link-button"
+                        onClick={() => updateUserDraft(entry.id, { timezone: detectBrowserTimezone() })}
+                      >
+                        Use system
+                      </button>
+                    </div>
                     <div className="admin-row-actions">
                       <button type="button" onClick={() => saveUser(entry)}>
                         Save
@@ -1731,13 +1763,19 @@ function App() {
                 <h4>Time zone</h4>
                 <form className="settings-grid" onSubmit={saveOwnTimezone}>
                   <label htmlFor="timezone">IANA Timezone</label>
-                  <input
-                    id="timezone"
-                    value={timezoneFormValue}
-                    onChange={(e) => setTimezoneFormValue(e.target.value)}
-                    placeholder="e.g. Europe/Riga"
-                    required
-                  />
+                  <div className="timezone-input-wrap">
+                    <input
+                      id="timezone"
+                      value={timezoneFormValue}
+                      onChange={(e) => setTimezoneFormValue(e.target.value)}
+                      placeholder="Search timezone"
+                      list="timezone-options"
+                      required
+                    />
+                    <button type="button" className="link-button" onClick={() => setTimezoneFormValue(detectBrowserTimezone())}>
+                      Use current system timezone
+                    </button>
+                  </div>
                   <div className="settings-actions">
                     <button type="submit">Save timezone</button>
                   </div>
