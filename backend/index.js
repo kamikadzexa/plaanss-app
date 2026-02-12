@@ -200,6 +200,41 @@ const seedStringLooksTranslatable = (value) => {
   return /\s|[.!?]/.test(value);
 };
 
+const upsertTranslationEntry = async (client, sourceText, sourceType = "manual") => {
+  await client.query(
+    `INSERT INTO translation_entries (source_text, english_text, russian_text, source_type)
+     VALUES ($1, $1, '', $2)
+     ON CONFLICT (source_text) DO UPDATE
+     SET source_type = EXCLUDED.source_type`,
+    [sourceText, sourceType]
+  );
+};
+
+const seedBuiltInTranslations = async (client) => {
+  const translatableEntries = [
+    "🔔 EVENT starts in *5 minutes to its beginning*",
+    "minutes to its beginning",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+    "Mon",
+    "Tue",
+    "Wed",
+    "Thu",
+    "Fri",
+    "Sat",
+    "Sun",
+  ];
+
+  for (const entry of translatableEntries) {
+    await upsertTranslationEntry(client, entry, "built-in");
+  }
+};
+
 const seedTranslationsFromFile = async (client, filePath, sourceType) => {
   if (!fs.existsSync(filePath)) {
     return false;
@@ -214,13 +249,7 @@ const seedTranslationsFromFile = async (client, filePath, sourceType) => {
       continue;
     }
 
-    await client.query(
-      `INSERT INTO translation_entries (source_text, english_text, russian_text, source_type)
-       VALUES ($1, $1, '', $2)
-       ON CONFLICT (source_text) DO UPDATE
-       SET source_type = EXCLUDED.source_type`,
-      [value, sourceType]
-    );
+    await upsertTranslationEntry(client, value, sourceType);
   }
 
   return true;
@@ -462,6 +491,8 @@ const initDb = async () => {
 
   const client = await pool.connect();
   try {
+    await seedBuiltInTranslations(client);
+
     const frontendSourcePath = resolveFrontendSourcePath();
     if (frontendSourcePath) {
       await seedTranslationsFromFile(client, frontendSourcePath, "frontend");
