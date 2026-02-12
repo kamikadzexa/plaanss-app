@@ -189,15 +189,21 @@ const normalizeLanguage = (value) => {
 };
 
 const seedStringLooksTranslatable = (value) => {
-  if (!value || value.length < 3) {
+  const normalized = `${value || ""}`.replace(/\s+/g, " ").trim();
+
+  if (!normalized || normalized.length < 2) {
     return false;
   }
 
-  if (!/[a-zA-Z]/.test(value) || /[{}<>$]/.test(value)) {
+  if (/^[0-9\s]+$/.test(normalized)) {
     return false;
   }
 
-  return /\s|[.!?]/.test(value);
+  if (/[{}<>$]/.test(normalized)) {
+    return false;
+  }
+
+  return /[A-Za-zА-Яа-яЁё]/.test(normalized);
 };
 
 const upsertTranslationEntry = async (client, sourceText, sourceType = "manual") => {
