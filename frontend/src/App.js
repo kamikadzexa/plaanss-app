@@ -32,6 +32,10 @@ const blankTelegramInfo = {
 };
 const blankTelegramAdmin = { botToken: "", botName: "", botLink: "", hasBotToken: false };
 const blankAdminTelegramMessage = { userId: "", userEmail: "", message: "" };
+const languageOptions = [
+  { value: "en", label: "English" },
+  { value: "ru", label: "Русский" },
+];
 const detectBrowserTimezone = () => {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -277,6 +281,27 @@ function LinkifiedText({ text }) {
   );
 }
 
+const collectStaticTextsFromDom = () => {
+  if (typeof document === "undefined") {
+    return [];
+  }
+
+  const values = new Set();
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const text = `${walker.currentNode?.textContent || ""}`.replace(/\s+/g, " ").trim();
+    if (!text || text.length < 2) {
+      continue;
+    }
+    if (!/[A-Za-zА-Яа-яЁё]/.test(text)) {
+      continue;
+    }
+    values.add(text);
+  }
+
+  return [...values];
+};
+
 function App() {
   const [token, setToken] = useState("");
   const [user, setUser] = useState(null);
@@ -307,6 +332,11 @@ function App() {
   const [eventForm, setEventForm] = useState(blankEventForm);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const timezoneOptions = useMemo(() => getAvailableTimezones(), []);
+  const [language, setLanguage] = useState("en");
+  const [translations, setTranslations] = useState({});
+  const [capturedTranslations, setCapturedTranslations] = useState(false);
+
+  const t = useCallback((text) => translations[text] || text, [translations]);
 
   const authHeader = useMemo(() => {
     const headers = { "Content-Type": "application/json" };
@@ -453,6 +483,7 @@ function App() {
         }
 
         setUser(meData.user);
+        setLanguage(meData.user?.language || "en");
 
         const eventsResponse = await apiFetch(`/events`, {
           headers: authHeader,
@@ -475,6 +506,76 @@ function App() {
 
     bootstrap();
   }, [apiFetch, authHeader, token]);
+
+  useEffect(() => {
+    if (!token) {
+      setTranslations({});
+      return;
+    }
+
+    const loadTranslations = async () => {
+      try {
+        const response = await apiFetch(`/translations?language=${language}`, {
+          headers: authHeader,
+        });
+        const data = await parseJsonSafe(response);
+        if (response.ok) {
+          setTranslations(data.dictionary || {});
+        }
+      } catch (translationError) {
+        // keep fallback strings
+      }
+    };
+
+    loadTranslations();
+  }, [apiFetch, authHeader, language, token]);
+
+  useEffect(() => {
+    if (!token || capturedTranslations) {
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const entries = collectStaticTextsFromDom();
+        if (!entries.length) {
+          return;
+        }
+
+        await apiFetch(`/translations/capture`, {
+          method: "POST",
+          headers: authHeader,
+          body: JSON.stringify({ sourceType: "frontend-runtime", entries }),
+        });
+        setCapturedTranslations(true);
+      } catch (captureError) {
+        // no-op
+      }
+    }, 1500);
+
+    return () => window.clearTimeout(timer);
+  }, [activePage, apiFetch, authHeader, capturedTranslations, token]);
+
+  const saveLanguage = async (nextLanguage) => {
+    try {
+      const response = await apiFetch(`/user/language`, {
+        method: "PUT",
+        headers: authHeader,
+        body: JSON.stringify({ language: nextLanguage }),
+      });
+      const data = await parseJsonSafe(response);
+
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to update language");
+      }
+
+      setUser((current) => ({ ...current, language: data.user?.language || nextLanguage }));
+      setLanguage(data.user?.language || nextLanguage);
+      setError("");
+    } catch (languageError) {
+      setError(languageError.message);
+    }
+  };
 
   const loadAdminUsers = async () => {
     if (!user?.isAdmin) {
@@ -541,7 +642,7 @@ function App() {
       botName: data.botName || "",
       botLink: data.botLink || "",
       hasBotToken: Boolean(data.hasBotToken),
-      status: data.status || "Not connected",
+      status: data.status || t("Not connected"),
       generatedId: data.generatedId || "",
     });
   };
@@ -702,7 +803,7 @@ function App() {
       setTelegramUser((current) => ({
         ...current,
         generatedId: data.linked ? "" : current.generatedId,
-        status: data.status || (data.linked ? "Connected" : "Not connected"),
+        status: data.status || (data.linked ? t("Connected") : t("Not connected")),
       }));
       setError("");
     } catch (tgError) {
@@ -1141,7 +1242,7 @@ function App() {
       <div className="auth-shell">
         <form className="auth-card" onSubmit={handleAuthSubmit}>
           <h1>Plaanss Calendar</h1>
-          <p>{authMode === "login" ? "Sign in to your calendar" : "Create a new account"}</p>
+          <p>{authMode === "login" ? t("Sign in to your calendar") : t("Create a new account")}</p>
           <label htmlFor="email">Email</label>
           <input
             id="email"
@@ -1164,7 +1265,7 @@ function App() {
           {error && <p className="error-text">{error}</p>}
 
           <button type="submit" disabled={loading}>
-            {loading ? "Please wait..." : authMode === "login" ? "Login" : "Register"}
+            {loading ? t("Please wait...") : authMode === "login" ? t("Login") : t("Register")}
           </button>
 
           <button
@@ -1175,7 +1276,7 @@ function App() {
               setAuthMode((mode) => (mode === "login" ? "register" : "login"));
             }}
           >
-            {authMode === "login" ? "Need an account? Register" : "Already have an account? Login"}
+            {authMode === "login" ? t("Need an account? Register") : t("Already have an account? Login")}
           </button>
         </form>
       </div>
@@ -1186,29 +1287,34 @@ function App() {
     <main className="calendar-shell">
       <header className="calendar-header">
         <div>
-          <h2>Welcome, {user.email}</h2>
+          <h2>{t("Welcome")}, {user.email}</h2>
           <p>
             {activePage === "calendar"
-              ? "Click + to create an event. Click event name to view details and edit."
+              ? t("Click + to create an event. Click event name to view details and edit.")
               : activePage === "admin"
-              ? "Manage users and Telegram bot configuration."
-              : "Manage your Telegram subscription and password."}
+              ? t("Manage users and Telegram bot configuration.")
+              : t("Manage your Telegram subscription and password.")}
           </p>
         </div>
         <div className="header-actions">
+          <select className="language-select" value={language} onChange={(e) => saveLanguage(e.target.value)} aria-label={t("Language")}>
+            {languageOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
           <button type="button" onClick={() => setActivePage("calendar")}>
-            Calendar
+            {t("Calendar")}
           </button>
           {user.isAdmin && (
             <button type="button" onClick={goToAdminPage}>
-              Management
+              {t("Management")}
             </button>
           )}
           <button type="button" onClick={goToSettingsPage}>
-            Settings
+            {t("Settings")}
           </button>
           <button type="button" onClick={logout}>
-            Logout
+            {t("Logout")}
           </button>
         </div>
       </header>
@@ -1250,13 +1356,13 @@ function App() {
             <section className="mobile-week-view" aria-label="Week view">
               <header className="mobile-week-controls">
                 <button type="button" onClick={goToPreviousMobileWeek}>
-                  prev
+                  {t("prev")}
                 </button>
                 <button type="button" onClick={goToCurrentMobileWeek}>
-                  today
+                  {t("today")}
                 </button>
                 <button type="button" onClick={goToNextMobileWeek}>
-                  next
+                  {t("next")}
                 </button>
               </header>
 
@@ -1272,7 +1378,7 @@ function App() {
 
                     <div className="mobile-week-events-list">
                       {day.events.length === 0 ? (
-                        <p className="mobile-week-empty">No events</p>
+                        <p className="mobile-week-empty">{t("No events")}</p>
                       ) : (
                         day.events.map((event) => {
                           const statusClass = getEventStatus(event.start, event.end, new Date(nowTick));
@@ -1645,14 +1751,14 @@ function App() {
                     </label>
                     <div className="admin-telegram-cell">
                       <span className={entry.telegramStatus === "connected" ? "status-connected" : "status-not-connected"}>
-                        {entry.telegramStatus === "connected" ? "Connected" : "Not connected"}
+                        {entry.telegramStatus === "connected" ? t("Connected") : t("Not connected")}
                       </span>
                     </div>
                     <div className="timezone-input-wrap">
                       <input
                         value={entry.timezone || "UTC"}
                         onChange={(e) => updateUserDraft(entry.id, { timezone: e.target.value })}
-                        placeholder="Search timezone"
+                        placeholder={t("Search timezone")}
                         list="timezone-options"
                       />
                       <button
@@ -1755,7 +1861,7 @@ function App() {
                   Status: <strong>{telegramUser.status}</strong>
                 </p>
                 <button type="button" onClick={generateTelegramId}>
-                  {telegramUser.generatedId ? "Regenerate subscription id" : "Generate subscription id"}
+                  {telegramUser.generatedId ? t("Regenerate subscription id") : t("Generate subscription id")}
                 </button>
               </section>
 
@@ -1768,7 +1874,7 @@ function App() {
                       id="timezone"
                       value={timezoneFormValue}
                       onChange={(e) => setTimezoneFormValue(e.target.value)}
-                      placeholder="Search timezone"
+                      placeholder={t("Search timezone")}
                       list="timezone-options"
                       required
                     />

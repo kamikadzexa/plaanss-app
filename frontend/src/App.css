@@ -808,3 +808,11 @@ button:hover {
     grid-column: auto;
   }
 }
+
+.language-select {
+  border: 1px solid #cdd4e5;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fff;
+  color: #1a1d26;
+}

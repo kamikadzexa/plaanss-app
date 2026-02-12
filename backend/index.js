@@ -6,6 +6,9 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
+const XLSX = require("xlsx");
 
 const app = express();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -93,6 +96,7 @@ const sanitizeUser = (row) => ({
   isAdmin: row.is_admin,
   isApproved: row.is_approved,
   timezone: row.timezone || "UTC",
+  language: row.language || "en",
   createdAt: row.created_at,
   telegramStatus: row.telegram_chat_id ? "connected" : "not_connected",
 });
@@ -179,7 +183,60 @@ const normalizeTimezone = (value) => {
   }
 };
 
-const formatEventNotificationMessage = (event, timezone) => {
+const normalizeLanguage = (value) => {
+  const normalized = `${value || ""}`.trim().toLowerCase();
+  return normalized === "ru" ? "ru" : "en";
+};
+
+const seedStringLooksTranslatable = (value) => {
+  if (!value || value.length < 3) {
+    return false;
+  }
+
+  if (!/[a-zA-Z]/.test(value) || /[{}<>$]/.test(value)) {
+    return false;
+  }
+
+  return /\s|[.!?]/.test(value);
+};
+
+const seedTranslationsFromFile = async (client, filePath, sourceType) => {
+  const source = fs.readFileSync(filePath, "utf-8");
+  const literalMatches = source.match(/(['"`])(?:\\.|(?!\1).)+\1/g) || [];
+
+  for (const raw of literalMatches) {
+    const value = raw.slice(1, -1).replace(/\\n/g, "\n").trim();
+    if (!seedStringLooksTranslatable(value)) {
+      continue;
+    }
+
+    await client.query(
+      `INSERT INTO translation_entries (source_text, english_text, russian_text, source_type)
+       VALUES ($1, $1, '', $2)
+       ON CONFLICT (source_text) DO UPDATE
+       SET source_type = EXCLUDED.source_type`,
+      [value, sourceType]
+    );
+  }
+};
+
+const getTranslationsByLanguage = async (language) => {
+  const lang = normalizeLanguage(language);
+  const result = await pool.query(
+    `SELECT source_text, english_text, russian_text
+     FROM translation_entries`
+  );
+
+  const dictionary = {};
+  result.rows.forEach((row) => {
+    dictionary[row.source_text] = lang === "ru" ? row.russian_text || row.english_text || row.source_text : row.english_text || row.source_text;
+  });
+
+  return dictionary;
+};
+
+const formatEventNotificationMessage = (event, timezone, language, dictionary = {}) => {
+  const t = (text) => dictionary[text] || text;
   const start = event.start_time ? new Date(event.start_time) : null;
   const safeTimezone = normalizeTimezone(timezone);
   const now = new Date();
@@ -195,9 +252,23 @@ const formatEventNotificationMessage = (event, timezone) => {
           hour12: false,
           timeZone: safeTimezone,
         }).format(start)
-      : "unknown time";
+      : t("unknown time");
 
-  return `🔔 ${event.title} starts in *${minutesToStart} minutes to its beginning*\n${event.notes || "No description"}\n${startLabel} (${safeTimezone})`;
+  const locale = normalizeLanguage(language) === "ru" ? "ru-RU" : "en-GB";
+  const localizedStartLabel =
+    start && !Number.isNaN(start.getTime())
+      ? new Intl.DateTimeFormat(locale, {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+          timeZone: safeTimezone,
+        }).format(start)
+      : t("unknown time");
+
+  return `🔔 ${event.title} ${t("starts in")} *${minutesToStart} ${t("minutes") }*\n${event.notes || t("No description")}\n${localizedStartLabel} (${safeTimezone})`;
 };
 
 const dispatchPendingEventNotifications = async () => {
@@ -234,7 +305,7 @@ const dispatchPendingEventNotifications = async () => {
 
       if (event.telegram_notify_mode === "all") {
         recipientsQuery =
-          "SELECT telegram_chat_id, timezone FROM users WHERE is_approved = TRUE AND telegram_chat_id IS NOT NULL";
+          "SELECT telegram_chat_id, timezone, language FROM users WHERE is_approved = TRUE AND telegram_chat_id IS NOT NULL";
       } else if (event.telegram_notify_mode === "specific") {
         const userIds = Array.isArray(event.telegram_notify_user_ids) ? event.telegram_notify_user_ids : [];
         if (!userIds.length) {
@@ -243,7 +314,7 @@ const dispatchPendingEventNotifications = async () => {
         }
 
         recipientsQuery =
-          "SELECT telegram_chat_id, timezone FROM users WHERE is_approved = TRUE AND telegram_chat_id IS NOT NULL AND id = ANY($1::int[])";
+          "SELECT telegram_chat_id, timezone, language FROM users WHERE is_approved = TRUE AND telegram_chat_id IS NOT NULL AND id = ANY($1::int[])";
         recipientsParams = [userIds];
       }
 
@@ -255,9 +326,15 @@ const dispatchPendingEventNotifications = async () => {
       const recipientsResult = await client.query(recipientsQuery, recipientsParams);
       
 
+      const translationsByLanguage = {
+        en: await getTranslationsByLanguage("en"),
+        ru: await getTranslationsByLanguage("ru"),
+      };
+
       for (const recipient of recipientsResult.rows) {
         try {
-          const message = formatEventNotificationMessage(event, recipient.timezone);
+          const lang = normalizeLanguage(recipient.language);
+          const message = formatEventNotificationMessage(event, recipient.timezone, lang, translationsByLanguage[lang]);
           await sendTelegramMessage(botToken, recipient.telegram_chat_id, message);
         } catch (sendError) {
           console.error(`Telegram event notification failed for event ${event.id}:`, sendError.message);
@@ -291,7 +368,21 @@ const initDb = async () => {
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_subscription_token TEXT");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone TEXT DEFAULT 'UTC'");
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'en'");
   await pool.query("UPDATE users SET timezone = 'UTC' WHERE timezone IS NULL OR timezone = ''");
+  await pool.query("UPDATE users SET language = 'en' WHERE language IS NULL OR language NOT IN ('en', 'ru')");
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS translation_entries (
+      id SERIAL PRIMARY KEY,
+      source_text TEXT UNIQUE NOT NULL,
+      english_text TEXT NOT NULL,
+      russian_text TEXT DEFAULT '',
+      source_type TEXT DEFAULT 'ui',
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS events (
@@ -351,6 +442,14 @@ const initDb = async () => {
     WHERE id IN (SELECT id FROM first_user)
       AND NOT EXISTS (SELECT 1 FROM users WHERE is_admin = TRUE)
   `);
+
+  const client = await pool.connect();
+  try {
+    await seedTranslationsFromFile(client, path.join(__dirname, "../frontend/src/App.js"), "frontend");
+    await seedTranslationsFromFile(client, path.join(__dirname, "index.js"), "backend");
+  } finally {
+    client.release();
+  }
 };
 
 app.get("/", (req, res) => {
@@ -388,7 +487,7 @@ app.post("/auth/register", async (req, res) => {
     const result = await pool.query(
       `INSERT INTO users (email, password_hash, is_admin, is_approved, timezone)
        VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, email, is_admin, is_approved, timezone`,
+       RETURNING id, email, is_admin, is_approved, timezone, language`,
       [normalizedEmail, passwordHash, isFirstUser, isFirstUser, normalizedTimezone]
     );
 
@@ -449,7 +548,7 @@ app.post("/auth/login", async (req, res) => {
 
 app.get("/auth/me", authMiddleware, async (req, res) => {
   const result = await pool.query(
-    "SELECT id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone FROM users WHERE id = $1",
+    "SELECT id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone, language FROM users WHERE id = $1",
     [req.user.id]
   );
   const user = result.rows[0];
@@ -477,7 +576,7 @@ app.post("/auth/logout", (req, res) => {
 app.get("/admin/users", authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone FROM users ORDER BY created_at ASC"
+      "SELECT id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone, language FROM users ORDER BY created_at ASC"
     );
     return res.json({ users: result.rows.map(sanitizeUser) });
   } catch (error) {
@@ -523,7 +622,7 @@ app.put("/admin/users/:id", authMiddleware, adminMiddleware, async (req, res) =>
              password_hash = $4,
              timezone = $5
          WHERE id = $6
-         RETURNING id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone`,
+         RETURNING id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone, language`,
         [normalizedEmail, Boolean(isAdmin), Boolean(isApproved), passwordHash, normalizedTimezone, id]
       );
       return res.json({ user: sanitizeUser(result.rows[0]) });
@@ -536,7 +635,7 @@ app.put("/admin/users/:id", authMiddleware, adminMiddleware, async (req, res) =>
            is_approved = $3,
            timezone = $4
        WHERE id = $5
-       RETURNING id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone`,
+       RETURNING id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone, language`,
       [normalizedEmail, Boolean(isAdmin), Boolean(isApproved), normalizedTimezone, id]
     );
 
@@ -826,7 +925,7 @@ app.put("/user/timezone", authMiddleware, async (req, res) => {
 
   try {
     const result = await pool.query(
-      "UPDATE users SET timezone = $1 WHERE id = $2 RETURNING id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone",
+      "UPDATE users SET timezone = $1 WHERE id = $2 RETURNING id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone, language",
       [normalizedTimezone, req.user.id]
     );
 
@@ -837,6 +936,120 @@ app.put("/user/timezone", authMiddleware, async (req, res) => {
     return res.json({ user: sanitizeUser(result.rows[0]) });
   } catch (error) {
     return res.status(500).json({ error: "Unable to update timezone" });
+  }
+});
+
+app.put("/user/language", authMiddleware, async (req, res) => {
+  const language = normalizeLanguage(req.body?.language);
+
+  try {
+    const result = await pool.query(
+      "UPDATE users SET language = $1 WHERE id = $2 RETURNING id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone, language",
+      [language, req.user.id]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    return res.json({ user: sanitizeUser(result.rows[0]) });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to update language" });
+  }
+});
+
+app.get("/translations", authMiddleware, async (req, res) => {
+  try {
+    const language = normalizeLanguage(req.query?.language);
+    const dictionary = await getTranslationsByLanguage(language);
+    return res.json({ language, dictionary });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to load translations" });
+  }
+});
+
+app.post("/translations/capture", authMiddleware, async (req, res) => {
+  const sourceType = `${req.body?.sourceType || "runtime"}`.trim() || "runtime";
+  const entries = Array.isArray(req.body?.entries) ? req.body.entries : [];
+
+  try {
+    for (const entry of entries) {
+      const value = `${entry || ""}`.trim();
+      if (!seedStringLooksTranslatable(value)) {
+        continue;
+      }
+
+      await pool.query(
+        `INSERT INTO translation_entries (source_text, english_text, russian_text, source_type)
+         VALUES ($1, $1, '', $2)
+         ON CONFLICT (source_text) DO NOTHING`,
+        [value, sourceType]
+      );
+    }
+
+    return res.json({ success: true, captured: entries.length });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to capture translations" });
+  }
+});
+
+app.get("/translations/export", authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT source_text, english_text, russian_text, source_type
+       FROM translation_entries
+       ORDER BY source_text ASC`
+    );
+
+    const rows = result.rows.map((row) => ({
+      source_text: row.source_text,
+      english_text: row.english_text || "",
+      russian_text: row.russian_text || "",
+      source_type: row.source_type || "",
+    }));
+
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(workbook, worksheet, "translations");
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", 'attachment; filename="translations.xlsx"');
+    return res.send(buffer);
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to export translations" });
+  }
+});
+
+app.post("/translations/import", authMiddleware, adminMiddleware, async (req, res) => {
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+
+  try {
+    for (const row of rows) {
+      const sourceText = `${row?.source_text || row?.sourceText || ""}`.trim();
+      if (!sourceText) {
+        continue;
+      }
+
+      const englishText = `${row?.english_text || row?.englishText || sourceText}`.trim() || sourceText;
+      const russianText = `${row?.russian_text || row?.russianText || ""}`.trim();
+      const sourceType = `${row?.source_type || row?.sourceType || "import"}`.trim() || "import";
+
+      await pool.query(
+        `INSERT INTO translation_entries (source_text, english_text, russian_text, source_type, updated_at)
+         VALUES ($1, $2, $3, $4, NOW())
+         ON CONFLICT (source_text) DO UPDATE
+         SET english_text = EXCLUDED.english_text,
+             russian_text = EXCLUDED.russian_text,
+             source_type = EXCLUDED.source_type,
+             updated_at = NOW()`,
+        [sourceText, englishText, russianText, sourceType]
+      );
+    }
+
+    return res.json({ success: true, imported: rows.length });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to import translations" });
   }
 });
 
