@@ -201,6 +201,10 @@ const seedStringLooksTranslatable = (value) => {
 };
 
 const seedTranslationsFromFile = async (client, filePath, sourceType) => {
+  if (!fs.existsSync(filePath)) {
+    return false;
+  }
+
   const source = fs.readFileSync(filePath, "utf-8");
   const literalMatches = source.match(/(['"`])(?:\\.|(?!\1).)+\1/g) || [];
 
@@ -218,6 +222,19 @@ const seedTranslationsFromFile = async (client, filePath, sourceType) => {
       [value, sourceType]
     );
   }
+
+  return true;
+};
+
+const resolveFrontendSourcePath = () => {
+  const candidates = [
+    path.join(__dirname, "../frontend/src/App.js"),
+    path.join(__dirname, "../../frontend/src/App.js"),
+    "/workspace/plaanss-app/frontend/src/App.js",
+    "/frontend/src/App.js",
+  ];
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
 };
 
 const getTranslationsByLanguage = async (language) => {
@@ -445,7 +462,13 @@ const initDb = async () => {
 
   const client = await pool.connect();
   try {
-    await seedTranslationsFromFile(client, path.join(__dirname, "../frontend/src/App.js"), "frontend");
+    const frontendSourcePath = resolveFrontendSourcePath();
+    if (frontendSourcePath) {
+      await seedTranslationsFromFile(client, frontendSourcePath, "frontend");
+    } else {
+      console.warn("Frontend source file not found for translation seeding. Skipping frontend static seed.");
+    }
+
     await seedTranslationsFromFile(client, path.join(__dirname, "index.js"), "backend");
   } finally {
     client.release();
