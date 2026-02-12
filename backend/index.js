@@ -6,6 +6,8 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const crypto = require("crypto");
+const multer = require("multer");
+const XLSX = require("xlsx");
 
 const app = express();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -46,6 +48,7 @@ app.use(
 );
 app.use(cookieParser());
 app.use(express.json());
+const upload = multer({ storage: multer.memoryStorage() });
 
 const issueToken = (user) => jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
 
@@ -496,22 +499,42 @@ app.get("/i18n/translations", authMiddleware, async (req, res) => {
 app.get("/admin/translations/export", authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const result = await pool.query("SELECT translation_key, en_value, ru_value FROM translations ORDER BY translation_key ASC");
-    const escape = (value) => `"${`${value || ""}`.replace(/"/g, '""')}"`;
-    const lines = ["key,en,ru", ...result.rows.map((row) => [row.translation_key, row.en_value, row.ru_value].map(escape).join(","))];
-    const csv = lines.join("\n");
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", 'attachment; filename="translations.csv"');
-    return res.send(csv);
+    const rows = result.rows.map((row) => ({
+      key: row.translation_key,
+      en: row.en_value,
+      ru: row.ru_value,
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "translations");
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", 'attachment; filename="translations.xlsx"');
+    return res.send(buffer);
   } catch (error) {
     return res.status(500).json({ error: "Unable to export translations" });
   }
 });
 
-app.post("/admin/translations/import", authMiddleware, adminMiddleware, async (req, res) => {
-  const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+app.post("/admin/translations/import", authMiddleware, adminMiddleware, upload.single("file"), async (req, res) => {
+  if (!req.file?.buffer) {
+    return res.status(400).json({ error: "Excel file is required" });
+  }
 
-  if (!rows.length) {
-    return res.status(400).json({ error: "rows array is required" });
+  let rows = [];
+
+  try {
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) {
+      return res.status(400).json({ error: "Excel file has no sheets" });
+    }
+
+    rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+  } catch (error) {
+    return res.status(400).json({ error: "Unable to parse Excel file" });
   }
 
   const client = await pool.connect();

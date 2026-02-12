@@ -31,9 +31,9 @@ const UI_TRANSLATIONS = {
     noDescriptionProvided: "No description provided.",
     timeUnavailable: "Time unavailable",
     translationManagement: "Translation management",
-    exportTranslations: "Export CSV",
-    importTranslations: "Import CSV",
-    saveImportedTranslations: "Save imported translations",
+    exportTranslations: "Export Excel",
+    importTranslations: "Import Excel",
+    saveImportedTranslations: "Import file",
     selectLanguage: "Language",
   },
   ru: {
@@ -49,9 +49,9 @@ const UI_TRANSLATIONS = {
     noDescriptionProvided: "Описание отсутствует.",
     timeUnavailable: "Время недоступно",
     translationManagement: "Управление переводами",
-    exportTranslations: "Экспорт CSV",
-    importTranslations: "Импорт CSV",
-    saveImportedTranslations: "Сохранить импортированные переводы",
+    exportTranslations: "Экспорт Excel",
+    importTranslations: "Импорт Excel",
+    saveImportedTranslations: "Импортировать файл",
     selectLanguage: "Язык",
   },
 };
@@ -355,7 +355,7 @@ function App() {
   const [calendarRangeStart, setCalendarRangeStart] = useState(null);
   const [language, setLanguage] = useState(detectBrowserLanguage);
   const [translationsRows, setTranslationsRows] = useState([]);
-  const [translationsImportText, setTranslationsImportText] = useState("");
+  const [translationsImportFile, setTranslationsImportFile] = useState(null);
 
   const [eventDialogMode, setEventDialogMode] = useState(null);
   const [eventForm, setEventForm] = useState(blankEventForm);
@@ -628,43 +628,7 @@ function App() {
     setTranslationsRows(data.items || []);
   };
 
-  const parseCsvRows = (csvText) => {
-    const lines = csvText.split(/\r?\n/).filter((line) => line.trim());
-    if (lines.length < 2) {
-      return [];
-    }
-
-    const parseLine = (line) => {
-      const result = [];
-      let current = "";
-      let insideQuotes = false;
-      for (let i = 0; i < line.length; i += 1) {
-        const ch = line[i];
-        if (ch === '"') {
-          if (insideQuotes && line[i + 1] === '"') {
-            current += '"';
-            i += 1;
-          } else {
-            insideQuotes = !insideQuotes;
-          }
-        } else if (ch === ',' && !insideQuotes) {
-          result.push(current);
-          current = "";
-        } else {
-          current += ch;
-        }
-      }
-      result.push(current);
-      return result;
-    };
-
-    return lines.slice(1).map((line) => {
-      const [key = "", en = "", ru = ""] = parseLine(line);
-      return { key: key.trim(), en, ru };
-    });
-  };
-
-  const exportTranslationsCsv = async () => {
+  const exportTranslationsFile = async () => {
     try {
       const response = await apiFetch(`/admin/translations/export`, { headers: authHeader });
       if (!response.ok) {
@@ -672,12 +636,12 @@ function App() {
         throw new Error(data.error || "Unable to export translations");
       }
 
-      const csv = await response.text();
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const fileBlob = await response.blob();
+      const blob = new Blob([fileBlob], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = "translations.csv";
+      anchor.download = "translations.xlsx";
       anchor.click();
       URL.revokeObjectURL(url);
       setError("");
@@ -686,29 +650,25 @@ function App() {
     }
   };
 
-  const importTranslationsCsv = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-
-    file.text().then((content) => {
-      setTranslationsImportText(content);
-    });
+  const importTranslationsFile = (event) => {
+    const file = event.target.files?.[0] || null;
+    setTranslationsImportFile(file);
   };
 
   const saveImportedTranslations = async () => {
-    const rows = parseCsvRows(translationsImportText);
-    if (!rows.length) {
-      setError("No translation rows found in CSV");
+    if (!translationsImportFile) {
+      setError("Select an Excel file first");
       return;
     }
 
     try {
+      const formData = new FormData();
+      formData.append("file", translationsImportFile);
+
       const response = await apiFetch(`/admin/translations/import`, {
         method: "POST",
-        headers: authHeader,
-        body: JSON.stringify({ rows }),
+        headers: token ? { Authorization: `Bearer ${token}`, "X-UI-Language": language } : { "X-UI-Language": language },
+        body: formData,
       });
       const data = await parseJsonSafe(response);
 
@@ -717,6 +677,7 @@ function App() {
       }
 
       await loadTranslations();
+      setTranslationsImportFile(null);
       setError("");
     } catch (importError) {
       setError(importError.message);
@@ -1860,18 +1821,12 @@ function App() {
               <h4>{t("translationManagement")}</h4>
               <div className="settings-grid">
                 <div className="settings-actions">
-                  <button type="button" onClick={exportTranslationsCsv}>
+                  <button type="button" onClick={exportTranslationsFile}>
                     {t("exportTranslations")}
                   </button>
                 </div>
                 <label htmlFor="translations-import-file">{t("importTranslations")}</label>
-                <input id="translations-import-file" type="file" accept=".csv,text/csv" onChange={importTranslationsCsv} />
-                <textarea
-                  rows={8}
-                  value={translationsImportText}
-                  onChange={(e) => setTranslationsImportText(e.target.value)}
-                  placeholder="key,en,ru"
-                />
+                <input id="translations-import-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={importTranslationsFile} />
                 <div className="settings-actions">
                   <button type="button" onClick={saveImportedTranslations}>
                     {t("saveImportedTranslations")}
