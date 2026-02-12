@@ -5,6 +5,7 @@ const cookieParser = require("cookie-parser");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
+const crypto = require("crypto");
 
 const app = express();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -87,7 +88,54 @@ const sanitizeUser = (row) => ({
   isAdmin: row.is_admin,
   isApproved: row.is_approved,
   createdAt: row.created_at,
+  telegramStatus: row.telegram_chat_id ? "connected" : "not_connected",
 });
+
+const sanitizeTelegramSettings = (row) => ({
+  botName: row?.bot_name || "",
+  botLink: row?.bot_link || "",
+  hasBotToken: Boolean(row?.bot_token),
+});
+
+const buildTelegramApiUrl = (botToken, method) => `https://api.telegram.org/bot${botToken}/${method}`;
+
+const fetchTelegramUpdates = async (botToken, offset) => {
+  const response = await fetch(buildTelegramApiUrl(botToken, "getUpdates"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      timeout: 20,
+      offset,
+      allowed_updates: ["message"],
+    }),
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.description || "Unable to fetch Telegram updates");
+  }
+
+  return data.result || [];
+};
+
+
+const sendTelegramMessage = async (botToken, chatId, text) => {
+  const response = await fetch(buildTelegramApiUrl(botToken, "sendMessage"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+    }),
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.description || "Unable to send Telegram message");
+  }
+};
 
 const initDb = async () => {
   await pool.query(`
@@ -101,6 +149,8 @@ const initDb = async () => {
 
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_approved BOOLEAN DEFAULT FALSE");
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT");
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_subscription_token TEXT");
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS events (
@@ -114,6 +164,23 @@ const initDb = async () => {
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS telegram_settings (
+      id INTEGER PRIMARY KEY,
+      bot_token TEXT,
+      bot_name TEXT,
+      bot_link TEXT,
+      last_update_id BIGINT DEFAULT 0,
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(
+    `INSERT INTO telegram_settings (id, bot_token, bot_name, bot_link, last_update_id)
+     VALUES (1, '', '', '', 0)
+     ON CONFLICT (id) DO NOTHING`
+  );
 
 
   await pool.query(`
@@ -231,7 +298,10 @@ app.post("/auth/login", async (req, res) => {
 });
 
 app.get("/auth/me", authMiddleware, async (req, res) => {
-  const result = await pool.query("SELECT id, email, is_admin, is_approved, created_at FROM users WHERE id = $1", [req.user.id]);
+  const result = await pool.query(
+    "SELECT id, email, is_admin, is_approved, created_at, telegram_chat_id FROM users WHERE id = $1",
+    [req.user.id]
+  );
   const user = result.rows[0];
 
   if (!user) {
@@ -257,7 +327,7 @@ app.post("/auth/logout", (req, res) => {
 app.get("/admin/users", authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT id, email, is_admin, is_approved, created_at FROM users ORDER BY created_at ASC"
+      "SELECT id, email, is_admin, is_approved, created_at, telegram_chat_id FROM users ORDER BY created_at ASC"
     );
     return res.json({ users: result.rows.map(sanitizeUser) });
   } catch (error) {
@@ -301,7 +371,7 @@ app.put("/admin/users/:id", authMiddleware, adminMiddleware, async (req, res) =>
              is_approved = $3,
              password_hash = $4
          WHERE id = $5
-         RETURNING id, email, is_admin, is_approved, created_at`,
+         RETURNING id, email, is_admin, is_approved, created_at, telegram_chat_id`,
         [normalizedEmail, Boolean(isAdmin), Boolean(isApproved), passwordHash, id]
       );
       return res.json({ user: sanitizeUser(result.rows[0]) });
@@ -313,7 +383,7 @@ app.put("/admin/users/:id", authMiddleware, adminMiddleware, async (req, res) =>
            is_admin = $2,
            is_approved = $3
        WHERE id = $4
-       RETURNING id, email, is_admin, is_approved, created_at`,
+       RETURNING id, email, is_admin, is_approved, created_at, telegram_chat_id`,
       [normalizedEmail, Boolean(isAdmin), Boolean(isApproved), id]
     );
 
@@ -420,6 +490,169 @@ app.delete("/events/:id", authMiddleware, async (req, res) => {
     return res.status(204).send();
   } catch (error) {
     return res.status(500).json({ error: "Unable to delete event" });
+  }
+});
+
+app.get("/admin/telegram-settings", authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query("SELECT bot_token, bot_name, bot_link FROM telegram_settings WHERE id = 1");
+    return res.json({ settings: sanitizeTelegramSettings(result.rows[0]) });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to load Telegram bot settings" });
+  }
+});
+
+app.put("/admin/telegram-settings", authMiddleware, adminMiddleware, async (req, res) => {
+  const { botToken, botName, botLink } = req.body;
+
+  if (!botName || !botLink) {
+    return res.status(400).json({ error: "Bot name and bot link are required" });
+  }
+
+  try {
+    const currentResult = await pool.query("SELECT bot_token FROM telegram_settings WHERE id = 1");
+    const currentToken = currentResult.rows[0]?.bot_token || "";
+    const nextToken = botToken?.trim() ? botToken.trim() : currentToken;
+
+    if (!nextToken) {
+      return res.status(400).json({ error: "Bot token is required for first-time setup" });
+    }
+
+    const result = await pool.query(
+      `UPDATE telegram_settings
+       SET bot_token = $1, bot_name = $2, bot_link = $3, updated_at = NOW()
+       WHERE id = 1
+       RETURNING bot_token, bot_name, bot_link`,
+      [nextToken, botName.trim(), botLink.trim()]
+    );
+
+    return res.json({ settings: sanitizeTelegramSettings(result.rows[0]) });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to save Telegram bot settings" });
+  }
+});
+
+app.put("/user/password", authMiddleware, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  if (!currentPassword || !newPassword || newPassword.length < 6) {
+    return res.status(400).json({ error: "Current password and new password (min 6 chars) are required" });
+  }
+
+  try {
+    const result = await pool.query("SELECT password_hash FROM users WHERE id = $1", [req.user.id]);
+    const user = result.rows[0];
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const isValid = await bcrypt.compare(currentPassword, user.password_hash);
+
+    if (!isValid) {
+      return res.status(401).json({ error: "Current password is incorrect" });
+    }
+
+    const nextHash = await bcrypt.hash(newPassword, 10);
+    await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [nextHash, req.user.id]);
+
+    return res.status(204).send();
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to change password" });
+  }
+});
+
+app.get("/user/telegram", authMiddleware, async (req, res) => {
+  try {
+    const [settingsResult, userResult] = await Promise.all([
+      pool.query("SELECT bot_name, bot_link, bot_token FROM telegram_settings WHERE id = 1"),
+      pool.query("SELECT telegram_chat_id, telegram_subscription_token FROM users WHERE id = $1", [req.user.id]),
+    ]);
+
+    const settings = settingsResult.rows[0];
+    const userData = userResult.rows[0];
+
+    let generatedId = userData?.telegram_subscription_token || "";
+
+    if (!userData?.telegram_chat_id && !generatedId) {
+      generatedId = crypto.randomUUID();
+      await pool.query("UPDATE users SET telegram_subscription_token = $1 WHERE id = $2", [generatedId, req.user.id]);
+    }
+
+    return res.json({
+      botName: settings?.bot_name || "",
+      botLink: settings?.bot_link || "",
+      hasBotToken: Boolean(settings?.bot_token),
+      status: userData?.telegram_chat_id ? "Connected" : "Not connected",
+      generatedId,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to load Telegram settings" });
+  }
+});
+
+app.post("/user/telegram/generate", authMiddleware, async (req, res) => {
+  try {
+    const generatedId = crypto.randomUUID();
+    await pool.query("UPDATE users SET telegram_subscription_token = $1, telegram_chat_id = NULL WHERE id = $2", [
+      generatedId,
+      req.user.id,
+    ]);
+
+    return res.json({ generatedId });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to generate Telegram subscription id" });
+  }
+});
+
+app.post("/user/telegram/verify", authMiddleware, async (req, res) => {
+  try {
+    const [settingsResult, userResult] = await Promise.all([
+      pool.query("SELECT bot_token, last_update_id FROM telegram_settings WHERE id = 1"),
+      pool.query("SELECT telegram_subscription_token FROM users WHERE id = $1", [req.user.id]),
+    ]);
+
+    const settings = settingsResult.rows[0];
+    const userData = userResult.rows[0];
+
+    if (!settings?.bot_token) {
+      return res.status(400).json({ error: "Telegram bot is not configured by admin yet" });
+    }
+
+    if (!userData?.telegram_subscription_token) {
+      return res.status(400).json({ error: "Generate subscription id first" });
+    }
+
+    const updates = await fetchTelegramUpdates(settings.bot_token, Number(settings.last_update_id || 0) + 1);
+    let latestUpdateId = Number(settings.last_update_id || 0);
+    let chatId = null;
+
+    updates.forEach((update) => {
+      latestUpdateId = Math.max(latestUpdateId, Number(update.update_id || 0));
+      const text = update?.message?.text || "";
+      if (text.trim() === `/start ${userData.telegram_subscription_token}`) {
+        chatId = `${update?.message?.chat?.id || ""}`;
+      }
+    });
+
+    if (latestUpdateId > Number(settings.last_update_id || 0)) {
+      await pool.query("UPDATE telegram_settings SET last_update_id = $1 WHERE id = 1", [latestUpdateId]);
+    }
+
+    if (!chatId) {
+      return res.json({ linked: false, status: "Waiting for /start message" });
+    }
+
+    await pool.query(
+      "UPDATE users SET telegram_chat_id = $1, telegram_subscription_token = NULL WHERE id = $2",
+      [chatId, req.user.id]
+    );
+
+    await sendTelegramMessage(settings.bot_token, chatId, "Connection successful ✅ Telegram notifications are enabled.");
+
+    return res.json({ linked: true, status: "Connected" });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Unable to verify Telegram subscription" });
   }
 });
 

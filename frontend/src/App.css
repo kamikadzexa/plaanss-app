@@ -693,3 +693,42 @@ button:hover {
   }
 
 }
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.settings-actions {
+  grid-column: 2;
+}
+
+.telegram-subscription-block,
+.password-block {
+  border: 1px solid #dce3f4;
+  border-radius: 12px;
+  padding: 14px;
+  background: #f9fbff;
+  margin-top: 14px;
+}
+
+.inline-link-button {
+  padding: 0;
+  background: transparent;
+  border: none;
+  text-decoration: underline;
+  font-weight: 700;
+}
+
+@media (max-width: 768px) {
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-actions {
+    grid-column: auto;
+  }
+}

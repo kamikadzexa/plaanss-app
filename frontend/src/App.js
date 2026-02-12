@@ -19,6 +19,15 @@ const blankEventForm = {
   timezoneMode: "user",
 };
 const mobileMediaQuery = "(max-width: 768px)";
+const blankPasswordForm = { currentPassword: "", newPassword: "" };
+const blankTelegramInfo = {
+  botName: "",
+  botLink: "",
+  hasBotToken: false,
+  status: "Not connected",
+  generatedId: "",
+};
+const blankTelegramAdmin = { botToken: "", botName: "", botLink: "", hasBotToken: false };
 
 const getInitialIsMobile = () =>
   typeof window !== "undefined" && typeof window.matchMedia === "function"
@@ -253,6 +262,10 @@ function App() {
   const [activePage, setActivePage] = useState("calendar");
   const [users, setUsers] = useState([]);
   const [adminLoading, setAdminLoading] = useState(false);
+  const [telegramAdmin, setTelegramAdmin] = useState(blankTelegramAdmin);
+  const [telegramUser, setTelegramUser] = useState(blankTelegramInfo);
+  const [passwordForm, setPasswordForm] = useState(blankPasswordForm);
+  const [settingsLoading, setSettingsLoading] = useState(false);
   const calendarRef = useRef(null);
   const [isMobile, setIsMobile] = useState(getInitialIsMobile);
   const [calendarView, setCalendarView] = useState(isMobile ? "mobileWeek" : "dayGridMonth");
@@ -458,6 +471,177 @@ function App() {
       setError(adminError.message);
     } finally {
       setAdminLoading(false);
+    }
+  };
+
+  const loadTelegramAdminSettings = async () => {
+    if (!user?.isAdmin) {
+      return;
+    }
+
+    const response = await apiFetch(`/admin/telegram-settings`, {
+      headers: authHeader,
+    });
+    const data = await parseJsonSafe(response);
+
+    if (!response.ok) {
+      throw new Error(data.error || "Unable to load Telegram bot settings");
+    }
+
+    setTelegramAdmin((current) => ({
+      ...current,
+      botName: data.settings?.botName || "",
+      botLink: data.settings?.botLink || "",
+      hasBotToken: Boolean(data.settings?.hasBotToken),
+    }));
+  };
+
+  const loadUserSettings = async () => {
+    const response = await apiFetch(`/user/telegram`, {
+      headers: authHeader,
+    });
+    const data = await parseJsonSafe(response);
+
+    if (!response.ok) {
+      throw new Error(data.error || "Unable to load Telegram subscription");
+    }
+
+    setTelegramUser({
+      botName: data.botName || "",
+      botLink: data.botLink || "",
+      hasBotToken: Boolean(data.hasBotToken),
+      status: data.status || "Not connected",
+      generatedId: data.generatedId || "",
+    });
+  };
+
+  const goToAdminPage = async () => {
+    setActivePage("admin");
+    setSettingsLoading(true);
+
+    try {
+      await Promise.all([loadAdminUsers(), loadTelegramAdminSettings()]);
+      setError("");
+    } catch (adminError) {
+      setError(adminError.message);
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  const goToSettingsPage = async () => {
+    setActivePage("settings");
+    setSettingsLoading(true);
+
+    try {
+      await loadUserSettings();
+      setPasswordForm(blankPasswordForm);
+      setError("");
+    } catch (settingsError) {
+      setError(settingsError.message);
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  const saveTelegramAdminSettings = async () => {
+    try {
+      const payload = {
+        botToken: telegramAdmin.botToken.trim(),
+        botName: telegramAdmin.botName.trim(),
+        botLink: telegramAdmin.botLink.trim(),
+      };
+
+      const response = await apiFetch(`/admin/telegram-settings`, {
+        method: "PUT",
+        headers: authHeader,
+        body: JSON.stringify(payload),
+      });
+      const data = await parseJsonSafe(response);
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to save Telegram bot settings");
+      }
+
+      setTelegramAdmin((current) => ({
+        ...current,
+        botToken: "",
+        botName: data.settings?.botName || current.botName,
+        botLink: data.settings?.botLink || current.botLink,
+        hasBotToken: Boolean(data.settings?.hasBotToken),
+      }));
+
+      setError("");
+    } catch (settingsError) {
+      setError(settingsError.message);
+    }
+  };
+
+  const generateTelegramId = async () => {
+    try {
+      const response = await apiFetch(`/user/telegram/generate`, {
+        method: "POST",
+        headers: authHeader,
+      });
+      const data = await parseJsonSafe(response);
+
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to generate Telegram id");
+      }
+
+      setTelegramUser((current) => ({
+        ...current,
+        generatedId: data.generatedId || "",
+        status: "Not connected",
+      }));
+      setError("");
+    } catch (tgError) {
+      setError(tgError.message);
+    }
+  };
+
+  const verifyTelegramSubscription = async () => {
+    try {
+      const response = await apiFetch(`/user/telegram/verify`, {
+        method: "POST",
+        headers: authHeader,
+      });
+      const data = await parseJsonSafe(response);
+
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to verify Telegram subscription");
+      }
+
+      setTelegramUser((current) => ({
+        ...current,
+        generatedId: data.linked ? "" : current.generatedId,
+        status: data.status || (data.linked ? "Connected" : "Not connected"),
+      }));
+      setError("");
+    } catch (tgError) {
+      setError(tgError.message);
+    }
+  };
+
+  const changeOwnPassword = async (event) => {
+    event.preventDefault();
+
+    try {
+      const response = await apiFetch(`/user/password`, {
+        method: "PUT",
+        headers: authHeader,
+        body: JSON.stringify(passwordForm),
+      });
+      const data = await parseJsonSafe(response);
+
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to change password");
+      }
+
+      setPasswordForm(blankPasswordForm);
+      setError("");
+    } catch (pwdError) {
+      setError(pwdError.message);
     }
   };
 
@@ -727,11 +911,6 @@ function App() {
     }
   };
 
-  const goToAdminPage = async () => {
-    setActivePage("admin");
-    await loadAdminUsers();
-  };
-
   const logout = async () => {
     try {
       await apiFetch(`/auth/logout`, { method: "POST" });
@@ -743,6 +922,9 @@ function App() {
     setUser(null);
     setEvents([]);
     setUsers([]);
+    setTelegramAdmin(blankTelegramAdmin);
+    setTelegramUser(blankTelegramInfo);
+    setPasswordForm(blankPasswordForm);
     setActivePage("calendar");
   };
 
@@ -831,7 +1013,9 @@ function App() {
           <p>
             {activePage === "calendar"
               ? "Click + to create an event. Click event name to view details and edit."
-              : "Manage users: approve accounts, grant admin, and edit email/password."}
+              : activePage === "admin"
+              ? "Manage users and Telegram bot configuration."
+              : "Manage your Telegram subscription and password."}
           </p>
         </div>
         <div className="header-actions">
@@ -840,9 +1024,12 @@ function App() {
           </button>
           {user.isAdmin && (
             <button type="button" onClick={goToAdminPage}>
-              User Management
+              Management
             </button>
           )}
+          <button type="button" onClick={goToSettingsPage}>
+            Settings
+          </button>
           <button type="button" onClick={logout}>
             Logout
           </button>
@@ -1175,55 +1362,173 @@ function App() {
 
       {activePage === "admin" && user.isAdmin && (
         <section className="calendar-card">
-          <h3>User Management</h3>
-          {adminLoading ? (
-            <p>Loading users...</p>
+          <h3>Management</h3>
+          {settingsLoading || adminLoading ? (
+            <p>Loading...</p>
           ) : (
-            <div className="admin-grid">
-              <div className="admin-grid-head">Email</div>
-              <div className="admin-grid-head">Approved</div>
-              <div className="admin-grid-head">Admin</div>
-              <div className="admin-grid-head">New Password</div>
-              <div className="admin-grid-head">Action</div>
+            <>
+              <h4>User Management</h4>
+              <div className="admin-grid">
+                <div className="admin-grid-head">Email</div>
+                <div className="admin-grid-head">Approved</div>
+                <div className="admin-grid-head">Admin</div>
+                <div className="admin-grid-head">New Password</div>
+                <div className="admin-grid-head">Action</div>
 
-              {users.map((entry) => (
-                <Fragment key={entry.id}>
-                  <input
-                    value={entry.email}
-                    onChange={(e) => updateUserDraft(entry.id, { email: e.target.value })}
-                  />
-                  <label className="checkbox-wrap">
+                {users.map((entry) => (
+                  <Fragment key={entry.id}>
                     <input
-                      type="checkbox"
-                      checked={Boolean(entry.isApproved)}
-                      onChange={(e) => updateUserDraft(entry.id, { isApproved: e.target.checked })}
+                      value={entry.email}
+                      onChange={(e) => updateUserDraft(entry.id, { email: e.target.value })}
                     />
-                    Approved
-                  </label>
-                  <label className="checkbox-wrap">
+                    <label className="checkbox-wrap">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(entry.isApproved)}
+                        onChange={(e) => updateUserDraft(entry.id, { isApproved: e.target.checked })}
+                      />
+                      Approved
+                    </label>
+                    <label className="checkbox-wrap">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(entry.isAdmin)}
+                        onChange={(e) => updateUserDraft(entry.id, { isAdmin: e.target.checked })}
+                      />
+                      Admin
+                    </label>
                     <input
-                      type="checkbox"
-                      checked={Boolean(entry.isAdmin)}
-                      onChange={(e) => updateUserDraft(entry.id, { isAdmin: e.target.checked })}
+                      type="password"
+                      minLength={6}
+                      placeholder="Leave blank to keep"
+                      value={entry.newPassword || ""}
+                      onChange={(e) => updateUserDraft(entry.id, { newPassword: e.target.value })}
                     />
-                    Admin
-                  </label>
-                  <input
-                    type="password"
-                    minLength={6}
-                    placeholder="Leave blank to keep"
-                    value={entry.newPassword || ""}
-                    onChange={(e) => updateUserDraft(entry.id, { newPassword: e.target.value })}
-                  />
-                  <button type="button" onClick={() => saveUser(entry)}>
-                    Save
+                    <button type="button" onClick={() => saveUser(entry)}>
+                      Save
+                    </button>
+                  </Fragment>
+                ))}
+              </div>
+
+              <h4>Telegram bot settings</h4>
+              <div className="settings-grid">
+                <label htmlFor="bot-token">Bot key</label>
+                <input
+                  id="bot-token"
+                  type="password"
+                  placeholder={telegramAdmin.hasBotToken ? "Saved (enter to replace)" : "Enter bot token"}
+                  value={telegramAdmin.botToken}
+                  onChange={(e) => setTelegramAdmin((current) => ({ ...current, botToken: e.target.value }))}
+                />
+
+                <label htmlFor="bot-name">Bot name</label>
+                <input
+                  id="bot-name"
+                  value={telegramAdmin.botName}
+                  onChange={(e) => setTelegramAdmin((current) => ({ ...current, botName: e.target.value }))}
+                />
+
+                <label htmlFor="bot-link">Bot link</label>
+                <input
+                  id="bot-link"
+                  placeholder="https://t.me/your_bot"
+                  value={telegramAdmin.botLink}
+                  onChange={(e) => setTelegramAdmin((current) => ({ ...current, botLink: e.target.value }))}
+                />
+
+                <div className="settings-actions">
+                  <button type="button" onClick={saveTelegramAdminSettings}>
+                    Save Telegram settings
                   </button>
-                </Fragment>
-              ))}
-            </div>
+                </div>
+              </div>
+            </>
           )}
         </section>
       )}
+
+      {activePage === "settings" && (
+        <section className="calendar-card">
+          <h3>User Settings</h3>
+          {settingsLoading ? (
+            <p>Loading settings...</p>
+          ) : (
+            <>
+              <section className="telegram-subscription-block">
+                <h4>Telegram notifications</h4>
+                <p>Connect your Telegram chat to receive notifications.</p>
+                <ol>
+                  <li>
+                    Open the bot:{" "}
+                    {telegramUser.botLink ? (
+                      <a href={telegramUser.botLink} target="_blank" rel="noreferrer">
+                        {telegramUser.botLink}
+                      </a>
+                    ) : (
+                      <span>Bot link not configured by admin yet.</span>
+                    )}
+                  </li>
+                  <li>
+                    Send <code>/start {telegramUser.generatedId || '"generated id"'}</code> in the chat.
+                  </li>
+                  <li>
+                    After sending message from step 2 {" "}
+                    <button type="button" className="link-button inline-link-button" onClick={verifyTelegramSubscription} disabled={!telegramUser.hasBotToken || !telegramUser.generatedId}>
+                      click here
+                    </button>
+                  </li>
+                </ol>
+                <p>
+                  Status: <strong>{telegramUser.status}</strong>
+                </p>
+                <button type="button" onClick={generateTelegramId}>
+                  {telegramUser.generatedId ? "Regenerate subscription id" : "Generate subscription id"}
+                </button>
+              </section>
+
+              <section className="password-block">
+                <h4>Change password</h4>
+                <form className="settings-grid" onSubmit={changeOwnPassword}>
+                  <label htmlFor="current-password">Current password</label>
+                  <input
+                    id="current-password"
+                    type="password"
+                    value={passwordForm.currentPassword}
+                    onChange={(e) =>
+                      setPasswordForm((current) => ({
+                        ...current,
+                        currentPassword: e.target.value,
+                      }))
+                    }
+                    required
+                  />
+
+                  <label htmlFor="new-password">New password</label>
+                  <input
+                    id="new-password"
+                    type="password"
+                    minLength={6}
+                    value={passwordForm.newPassword}
+                    onChange={(e) =>
+                      setPasswordForm((current) => ({
+                        ...current,
+                        newPassword: e.target.value,
+                      }))
+                    }
+                    required
+                  />
+
+                  <div className="settings-actions">
+                    <button type="submit">Change password</button>
+                  </div>
+                </form>
+              </section>
+            </>
+          )}
+        </section>
+      )}
+
     </main>
   );
 }
