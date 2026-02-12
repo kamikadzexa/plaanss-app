@@ -1,0 +1,16 @@
+{
+  "app.name": "Plaanss Calendar",
+  "auth.signInSubtitle": "Sign in to your calendar",
+  "auth.registerSubtitle": "Create a new account",
+  "auth.email": "Email",
+  "auth.password": "Password",
+  "auth.login": "Login",
+  "auth.register": "Register",
+  "auth.loading": "Please wait...",
+  "auth.needAccount": "Need an account? Register",
+  "auth.haveAccount": "Already have an account? Login",
+  "header.calendar": "Calendar",
+  "header.management": "Management",
+  "header.settings": "Settings",
+  "header.logout": "Logout"
+}

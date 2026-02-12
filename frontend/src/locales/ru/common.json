@@ -1,0 +1,16 @@
+{
+  "app.name": "Календарь Plaanss",
+  "auth.signInSubtitle": "Войдите в свой календарь",
+  "auth.registerSubtitle": "Создайте новый аккаунт",
+  "auth.email": "Email",
+  "auth.password": "Пароль",
+  "auth.login": "Войти",
+  "auth.register": "Зарегистрироваться",
+  "auth.loading": "Пожалуйста, подождите...",
+  "auth.needAccount": "Нет аккаунта? Зарегистрируйтесь",
+  "auth.haveAccount": "Уже есть аккаунт? Войти",
+  "header.calendar": "Календарь",
+  "header.management": "Управление",
+  "header.settings": "Настройки",
+  "header.logout": "Выйти"
+}

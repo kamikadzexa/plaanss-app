@@ -70,6 +70,15 @@ If your server still defaults to the old binary, prefer explicit plugin invocati
 docker compose version
 ```
 
+
+## Localization (English + Russian)
+
+The project includes a Translation Management System workflow (Option B) based on **Crowdin** with in-repo JSON locale files.
+
+- Crowdin config: `.crowdin.yml`
+- Locale files: `frontend/src/locales/<lang>/common.json`
+- Setup + sync + manual export/import guide: `docs/localization-workflow.md`
+
 ## Environment notes
 - Change `JWT_SECRET` in `docker-compose.yml` before production use.
 - By default, the frontend targets `http(s)://<current-host>:8000`, which works for VPS access without hardcoding localhost.
