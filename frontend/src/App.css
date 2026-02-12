@@ -356,7 +356,7 @@ button:hover {
 
 .admin-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 2fr) 1fr 1fr minmax(180px, 1.5fr) auto;
+  grid-template-columns: minmax(220px, 2fr) 1fr 1fr 1fr minmax(180px, 1.5fr) auto auto;
   gap: 10px;
   align-items: center;
 }
@@ -377,6 +377,50 @@ button:hover {
 .checkbox-wrap input {
   width: 18px;
   height: 18px;
+}
+
+.telegram-event-settings {
+  border: 1px solid #dce3f4;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.telegram-event-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.telegram-event-row input {
+  max-width: 140px;
+}
+
+.telegram-user-pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.telegram-user-pick-list p {
+  margin: 0;
+  color: #4b546a;
+}
+
+.admin-telegram-cell {
+  font-weight: 600;
+}
+
+.status-connected {
+  color: #168a3e;
+}
+
+.status-not-connected {
+  color: #6e768c;
 }
 
 .error-text {

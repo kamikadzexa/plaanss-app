@@ -17,6 +17,9 @@ const blankEventForm = {
   durationMinutes: "60",
   notes: "",
   timezoneMode: "user",
+  telegramNotifyMinutes: "60",
+  telegramNotifyAll: true,
+  telegramNotifyUserIds: [],
 };
 const mobileMediaQuery = "(max-width: 768px)";
 const blankPasswordForm = { currentPassword: "", newPassword: "" };
@@ -28,6 +31,7 @@ const blankTelegramInfo = {
   generatedId: "",
 };
 const blankTelegramAdmin = { botToken: "", botName: "", botLink: "", hasBotToken: false };
+const blankAdminTelegramMessage = { userId: "", userEmail: "", message: "" };
 
 const getInitialIsMobile = () =>
   typeof window !== "undefined" && typeof window.matchMedia === "function"
@@ -264,6 +268,9 @@ function App() {
   const [adminLoading, setAdminLoading] = useState(false);
   const [telegramAdmin, setTelegramAdmin] = useState(blankTelegramAdmin);
   const [telegramUser, setTelegramUser] = useState(blankTelegramInfo);
+  const [telegramConnectedUsers, setTelegramConnectedUsers] = useState([]);
+  const [telegramMessageDialogOpen, setTelegramMessageDialogOpen] = useState(false);
+  const [adminTelegramMessage, setAdminTelegramMessage] = useState(blankAdminTelegramMessage);
   const [passwordForm, setPasswordForm] = useState(blankPasswordForm);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const calendarRef = useRef(null);
@@ -515,17 +522,72 @@ function App() {
     });
   };
 
+  const loadTelegramConnectedUsers = async () => {
+    const response = await apiFetch(`/telegram/connected-users`, {
+      headers: authHeader,
+    });
+    const data = await parseJsonSafe(response);
+
+    if (!response.ok) {
+      throw new Error(data.error || "Unable to load Telegram connected users");
+    }
+
+    setTelegramConnectedUsers(data.users || []);
+  };
+
   const goToAdminPage = async () => {
     setActivePage("admin");
     setSettingsLoading(true);
 
     try {
-      await Promise.all([loadAdminUsers(), loadTelegramAdminSettings()]);
+      await Promise.all([loadAdminUsers(), loadTelegramAdminSettings(), loadTelegramConnectedUsers()]);
       setError("");
     } catch (adminError) {
       setError(adminError.message);
     } finally {
       setSettingsLoading(false);
+    }
+  };
+
+  const openAdminTelegramMessageDialog = (entry) => {
+    setAdminTelegramMessage({
+      userId: `${entry.id}`,
+      userEmail: entry.email,
+      message: "",
+    });
+    setTelegramMessageDialogOpen(true);
+  };
+
+  const closeAdminTelegramMessageDialog = () => {
+    setTelegramMessageDialogOpen(false);
+    setAdminTelegramMessage(blankAdminTelegramMessage);
+  };
+
+  const sendAdminTelegramMessage = async (event) => {
+    event.preventDefault();
+
+    const message = adminTelegramMessage.message.trim();
+    if (!message) {
+      setError("Telegram message cannot be empty.");
+      return;
+    }
+
+    try {
+      const response = await apiFetch(`/admin/users/${adminTelegramMessage.userId}/telegram-message`, {
+        method: "POST",
+        headers: authHeader,
+        body: JSON.stringify({ message }),
+      });
+      const data = await parseJsonSafe(response);
+
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to send Telegram message");
+      }
+
+      setError("");
+      closeAdminTelegramMessageDialog();
+    } catch (sendError) {
+      setError(sendError.message);
     }
   };
 
@@ -692,6 +754,19 @@ function App() {
     setEventDialogMode("create");
   };
 
+  const toggleTelegramNotifyUserId = (targetId, checked) => {
+    setEventForm((current) => {
+      const nextIds = checked
+        ? [...new Set([...current.telegramNotifyUserIds, targetId])]
+        : current.telegramNotifyUserIds.filter((id) => `${id}` !== `${targetId}`);
+
+      return {
+        ...current,
+        telegramNotifyUserIds: nextIds,
+      };
+    });
+  };
+
   const closeEventDialog = () => {
     setEventDialogMode(null);
     setEventForm(blankEventForm);
@@ -791,6 +866,11 @@ function App() {
       end: endDateTime.toISOString(),
       allDay: false,
       notes: eventForm.notes,
+      telegramNotification: {
+        minutesBefore: Number.parseInt(eventForm.telegramNotifyMinutes, 10) || 60,
+        notifyAll: Boolean(eventForm.telegramNotifyAll),
+        userIds: eventForm.telegramNotifyAll ? [] : eventForm.telegramNotifyUserIds,
+      },
     };
 
     try {
@@ -815,6 +895,11 @@ function App() {
       end: calendarEvent.endStr || calendarEvent.end || null,
       notes: calendarEvent.extendedProps?.notes || calendarEvent.notes || "",
       allDay: Boolean(calendarEvent.allDay),
+      telegramNotification: calendarEvent.extendedProps?.telegramNotification || calendarEvent.telegramNotification || {
+        minutesBefore: 60,
+        notifyAll: true,
+        userIds: [],
+      },
     };
 
     setSelectedEvent(normalized);
@@ -836,6 +921,9 @@ function App() {
       durationMinutes: getDurationMinutes(selectedEvent.start, selectedEvent.end),
       notes: selectedEvent.notes || "",
       timezoneMode,
+      telegramNotifyMinutes: `${selectedEvent.telegramNotification?.minutesBefore || 60}`,
+      telegramNotifyAll: Boolean(selectedEvent.telegramNotification?.notifyAll ?? true),
+      telegramNotifyUserIds: selectedEvent.telegramNotification?.userIds || [],
     });
     setEventDialogMode("edit");
   };
@@ -1307,6 +1395,60 @@ function App() {
                       }
                       placeholder={"Add multiple lines and links like:\nhttps://example.com"}
                     />
+
+                    <label htmlFor="event-telegram-minutes">Telegram notification</label>
+                    <div className="telegram-event-settings">
+                      <div className="telegram-event-row">
+                        <span>Minutes before event</span>
+                        <input
+                          id="event-telegram-minutes"
+                          type="number"
+                          min={1}
+                          max={10080}
+                          value={eventForm.telegramNotifyMinutes}
+                          onChange={(e) =>
+                            setEventForm((current) => ({
+                              ...current,
+                              telegramNotifyMinutes: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <label className="checkbox-wrap">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(eventForm.telegramNotifyAll)}
+                          onChange={(e) =>
+                            setEventForm((current) => ({
+                              ...current,
+                              telegramNotifyAll: e.target.checked,
+                            }))
+                          }
+                        />
+                        Notify all connected Telegram users
+                      </label>
+
+                      {!eventForm.telegramNotifyAll && (
+                        <div className="telegram-user-pick-list">
+                          <p>Select specific users with Telegram bot connected:</p>
+                          {telegramConnectedUsers.length === 0 ? (
+                            <p className="event-description-empty">No connected Telegram users available.</p>
+                          ) : (
+                            telegramConnectedUsers.map((entry) => (
+                              <label key={entry.id} className="checkbox-wrap">
+                                <input
+                                  type="checkbox"
+                                  checked={eventForm.telegramNotifyUserIds.some((id) => `${id}` === `${entry.id}`)}
+                                  onChange={(e) => toggleTelegramNotifyUserId(entry.id, e.target.checked)}
+                                />
+                                {entry.email}
+                              </label>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className="event-form-actions">
                     <button type="submit">{eventDialogMode === "create" ? "Create" : "Save"}</button>
@@ -1372,6 +1514,7 @@ function App() {
                 <div className="admin-grid-head">Email</div>
                 <div className="admin-grid-head">Approved</div>
                 <div className="admin-grid-head">Admin</div>
+                <div className="admin-grid-head">Telegram</div>
                 <div className="admin-grid-head">New Password</div>
                 <div className="admin-grid-head">Action</div>
 
@@ -1397,6 +1540,11 @@ function App() {
                       />
                       Admin
                     </label>
+                    <div className="admin-telegram-cell">
+                      <span className={entry.telegramStatus === "connected" ? "status-connected" : "status-not-connected"}>
+                        {entry.telegramStatus === "connected" ? "Connected" : "Not connected"}
+                      </span>
+                    </div>
                     <input
                       type="password"
                       minLength={6}
@@ -1406,6 +1554,14 @@ function App() {
                     />
                     <button type="button" onClick={() => saveUser(entry)}>
                       Save
+                    </button>
+                    <button
+                      type="button"
+                      className="link-button"
+                      disabled={entry.telegramStatus !== "connected"}
+                      onClick={() => openAdminTelegramMessageDialog(entry)}
+                    >
+                      Send Telegram
                     </button>
                   </Fragment>
                 ))}
@@ -1527,6 +1683,40 @@ function App() {
             </>
           )}
         </section>
+      )}
+
+      {telegramMessageDialogOpen && (
+        <div className="modal-overlay" role="presentation">
+          <section className="modal-card" role="dialog" aria-modal="true">
+            <h3>Send Telegram notification</h3>
+            <p>
+              User: <strong>{adminTelegramMessage.userEmail}</strong>
+            </p>
+            <form onSubmit={sendAdminTelegramMessage} className="settings-grid">
+              <label htmlFor="admin-telegram-message">Message</label>
+              <textarea
+                id="admin-telegram-message"
+                rows={5}
+                value={adminTelegramMessage.message}
+                onChange={(e) =>
+                  setAdminTelegramMessage((current) => ({
+                    ...current,
+                    message: e.target.value,
+                  }))
+                }
+                placeholder="Enter message to send"
+                required
+              />
+
+              <div className="settings-actions event-form-actions">
+                <button type="submit">Send</button>
+                <button type="button" className="link-button" onClick={closeAdminTelegramMessageDialog}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
       )}
 
     </main>
