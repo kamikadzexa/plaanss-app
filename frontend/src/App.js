@@ -32,6 +32,13 @@ const blankTelegramInfo = {
 };
 const blankTelegramAdmin = { botToken: "", botName: "", botLink: "", hasBotToken: false };
 const blankAdminTelegramMessage = { userId: "", userEmail: "", message: "" };
+const detectBrowserTimezone = () => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch (error) {
+    return "UTC";
+  }
+};
 
 const getInitialIsMobile = () =>
   typeof window !== "undefined" && typeof window.matchMedia === "function"
@@ -271,6 +278,7 @@ function App() {
   const [telegramConnectedUsers, setTelegramConnectedUsers] = useState([]);
   const [telegramMessageDialogOpen, setTelegramMessageDialogOpen] = useState(false);
   const [adminTelegramMessage, setAdminTelegramMessage] = useState(blankAdminTelegramMessage);
+  const [timezoneFormValue, setTimezoneFormValue] = useState("");
   const [passwordForm, setPasswordForm] = useState(blankPasswordForm);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const calendarRef = useRef(null);
@@ -597,6 +605,7 @@ function App() {
 
     try {
       await loadUserSettings();
+      setTimezoneFormValue(user?.timezone || "UTC");
       setPasswordForm(blankPasswordForm);
       setError("");
     } catch (settingsError) {
@@ -742,10 +751,18 @@ function App() {
     setError("");
 
     try {
+      const payload =
+        authMode === "register"
+          ? {
+              ...authForm,
+              timezone: detectBrowserTimezone(),
+            }
+          : authForm;
+
       const response = await apiFetch(`/auth/${authMode}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(authForm),
+        body: JSON.stringify(payload),
       });
 
       const data = await parseJsonSafe(response);
@@ -984,6 +1001,7 @@ function App() {
         email: entry.email,
         isAdmin: Boolean(entry.isAdmin),
         isApproved: Boolean(entry.isApproved),
+        timezone: entry.timezone || "UTC",
       };
 
       if (entry.newPassword) {
@@ -1025,6 +1043,32 @@ function App() {
       setError("");
     } catch (saveError) {
       setError(saveError.message);
+    }
+  };
+
+  const saveOwnTimezone = async (event) => {
+    event.preventDefault();
+
+    try {
+      const response = await apiFetch(`/user/timezone`, {
+        method: "PUT",
+        headers: authHeader,
+        body: JSON.stringify({ timezone: timezoneFormValue }),
+      });
+      const data = await parseJsonSafe(response);
+
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to update timezone");
+      }
+
+      setUser((current) => ({
+        ...current,
+        timezone: data.user?.timezone || current?.timezone || "UTC",
+      }));
+      setTimezoneFormValue(data.user?.timezone || timezoneFormValue);
+      setError("");
+    } catch (timezoneError) {
+      setError(timezoneError.message);
     }
   };
 
@@ -1545,6 +1589,7 @@ function App() {
                 <div className="admin-grid-head">Approved</div>
                 <div className="admin-grid-head">Admin</div>
                 <div className="admin-grid-head">Telegram</div>
+                <div className="admin-grid-head">Timezone</div>
                 <div className="admin-grid-head">Actions</div>
 
                 {users.map((entry) => (
@@ -1581,6 +1626,11 @@ function App() {
                         {entry.telegramStatus === "connected" ? "Connected" : "Not connected"}
                       </span>
                     </div>
+                    <input
+                      value={entry.timezone || "UTC"}
+                      onChange={(e) => updateUserDraft(entry.id, { timezone: e.target.value })}
+                      placeholder="e.g. Europe/Riga"
+                    />
                     <div className="admin-row-actions">
                       <button type="button" onClick={() => saveUser(entry)}>
                         Save
@@ -1675,6 +1725,23 @@ function App() {
                 <button type="button" onClick={generateTelegramId}>
                   {telegramUser.generatedId ? "Regenerate subscription id" : "Generate subscription id"}
                 </button>
+              </section>
+
+              <section className="password-block">
+                <h4>Time zone</h4>
+                <form className="settings-grid" onSubmit={saveOwnTimezone}>
+                  <label htmlFor="timezone">IANA Timezone</label>
+                  <input
+                    id="timezone"
+                    value={timezoneFormValue}
+                    onChange={(e) => setTimezoneFormValue(e.target.value)}
+                    placeholder="e.g. Europe/Riga"
+                    required
+                  />
+                  <div className="settings-actions">
+                    <button type="submit">Save timezone</button>
+                  </div>
+                </form>
               </section>
 
               <section className="password-block">
