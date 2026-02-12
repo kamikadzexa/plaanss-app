@@ -36,6 +36,7 @@ const languageOptions = [
   { value: "en", label: "English" },
   { value: "ru", label: "Русский" },
 ];
+const getLocaleFromLanguage = (language = "en") => (language === "ru" ? "ru-RU" : "en-GB");
 const detectBrowserTimezone = () => {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -161,7 +162,7 @@ const formatDateTimeForTimezoneInput = (value, timezoneMode = "user") => {
   return formatDateTimeForInput(value);
 };
 
-const formatDateTimeEu = (value) => {
+const formatDateTimeEu = (value, language = "en") => {
   if (!value) {
     return "-";
   }
@@ -171,7 +172,7 @@ const formatDateTimeEu = (value) => {
     return "-";
   }
 
-  const weekday = new Intl.DateTimeFormat("en-GB", { weekday: "short" }).format(date);
+  const weekday = new Intl.DateTimeFormat(getLocaleFromLanguage(language), { weekday: "short" }).format(date);
   const day = String(date.getDate()).padStart(2, "0");
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const year = date.getFullYear();
@@ -216,7 +217,7 @@ const getEventStatus = (eventStart, eventEnd, now = new Date()) => {
   return "event-status-past";
 };
 
-const formatEventTimeRange = (eventStart, eventEnd) => {
+const formatEventTimeRange = (eventStart, eventEnd, language = "en") => {
   const start = new Date(eventStart);
   const end = eventEnd ? new Date(eventEnd) : null;
 
@@ -224,7 +225,7 @@ const formatEventTimeRange = (eventStart, eventEnd) => {
     return "Time unavailable";
   }
 
-  const formatter = new Intl.DateTimeFormat("en-GB", {
+  const formatter = new Intl.DateTimeFormat(getLocaleFromLanguage(language), {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -337,8 +338,10 @@ function App() {
   const [capturedTranslations, setCapturedTranslations] = useState(false);
   const [translationImportFile, setTranslationImportFile] = useState(null);
   const [translationImporting, setTranslationImporting] = useState(false);
+  const [translationsRevision, setTranslationsRevision] = useState(0);
 
   const t = useCallback((text) => translations[text] || text, [translations]);
+  const currentLocale = useMemo(() => getLocaleFromLanguage(language), [language]);
 
   const authHeader = useMemo(() => {
     const headers = { "Content-Type": "application/json" };
@@ -476,6 +479,7 @@ function App() {
         setError("");
         const meResponse = await apiFetch(`/auth/me`, {
           headers: authHeader,
+          cache: "no-store",
         });
 
         const meData = await parseJsonSafe(meResponse);
@@ -517,8 +521,9 @@ function App() {
 
     const loadTranslations = async () => {
       try {
-        const response = await apiFetch(`/translations?language=${language}`, {
+        const response = await apiFetch(`/translations?language=${language}&rev=${translationsRevision}`, {
           headers: authHeader,
+          cache: "no-store",
         });
         const data = await parseJsonSafe(response);
         if (response.ok) {
@@ -530,7 +535,7 @@ function App() {
     };
 
     loadTranslations();
-  }, [apiFetch, authHeader, language, token]);
+  }, [apiFetch, authHeader, language, token, translationsRevision]);
 
   useEffect(() => {
     if (!token || capturedTranslations) {
@@ -573,6 +578,7 @@ function App() {
 
       setUser((current) => ({ ...current, language: data.user?.language || nextLanguage }));
       setLanguage(data.user?.language || nextLanguage);
+      setTranslationsRevision(Date.now());
       setError("");
     } catch (languageError) {
       setError(languageError.message);
@@ -837,6 +843,7 @@ function App() {
       if (fileInput) {
         fileInput.value = "";
       }
+      setTranslationsRevision(Date.now());
       setError("");
     } catch (importError) {
       setError(importError.message);
@@ -1450,7 +1457,7 @@ function App() {
                 {mobileWeekDays.map((day) => (
                   <article key={day.key} className="mobile-week-day-row">
                     <h4>
-                      {new Intl.DateTimeFormat("en-GB", {
+                      {new Intl.DateTimeFormat(currentLocale, {
                         weekday: "long",
                         day: "2-digit",
                       }).format(day.date)}
@@ -1472,9 +1479,9 @@ function App() {
                             >
                               <span className="mobile-week-event-time">
                                 <span className="mobile-week-event-dot" aria-hidden="true" />
-                                {formatEventTimeRange(event.start, event.end)}
+                                {formatEventTimeRange(event.start, event.end, language)}
                               </span>
-                              <span className="mobile-week-event-name">{event.title || "Untitled event"}</span>
+                              <span className="mobile-week-event-name">{event.title || t("Untitled event")}</span>
                             </button>
                           );
                         })
@@ -1500,13 +1507,13 @@ function App() {
             }}
             selectable
             firstDay={1}
-            locale="en-gb"
+            locale={language === "ru" ? "ru" : "en-gb"}
             dayHeaderContent={(arg) => {
               if (arg.view.type === "dayGridMonth") {
-                return new Intl.DateTimeFormat("en-GB", { weekday: "long" }).format(arg.date);
+                return new Intl.DateTimeFormat(currentLocale, { weekday: "long" }).format(arg.date);
               }
 
-              return new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "2-digit" }).format(arg.date);
+              return new Intl.DateTimeFormat(currentLocale, { weekday: "long", day: "2-digit" }).format(arg.date);
             }}
             listDayFormat={{
               weekday: "long",
@@ -1762,19 +1769,19 @@ function App() {
               <>
                 <h3>{selectedEvent.title}</h3>
                 <p className="event-time-row">
-                  Starts: {formatDateTimeEu(selectedEvent.start)}
+                  {t("Starts")}: {formatDateTimeEu(selectedEvent.start, language)}
                 </p>
                 <p className="event-time-row">
-                  Ends: {formatDateTimeEu(selectedEvent.end)}
+                  {t("Ends")}: {formatDateTimeEu(selectedEvent.end, language)}
                 </p>
-                <h4>Description</h4>
+                <h4>{t("Description")}</h4>
                 <LinkifiedText text={selectedEvent.notes} />
                 <div className="event-form-actions">
                   <button type="button" onClick={startEditingSelectedEvent}>
-                    Edit
+                    {t("Edit")}
                   </button>
                   <button type="button" className="link-button" onClick={closeEventDialog}>
-                    Close
+                    {t("Close")}
                   </button>
                 </div>
               </>
@@ -1785,20 +1792,20 @@ function App() {
 
       {activePage === "admin" && user.isAdmin && (
         <section className="calendar-card">
-          <h3>Management</h3>
+          <h3>{t("Management")}</h3>
           {settingsLoading || adminLoading ? (
-            <p>Loading...</p>
+            <p>{t("Loading...")}</p>
           ) : (
             <>
-              <h4>User Management</h4>
+              <h4>{t("User Management")}</h4>
               <div className="admin-grid">
-                <div className="admin-grid-head">Email</div>
-                <div className="admin-grid-head">Password (new)</div>
-                <div className="admin-grid-head">Approved</div>
-                <div className="admin-grid-head">Admin</div>
-                <div className="admin-grid-head">Telegram</div>
-                <div className="admin-grid-head">Timezone</div>
-                <div className="admin-grid-head">Actions</div>
+                <div className="admin-grid-head">{t("Email")}</div>
+                <div className="admin-grid-head">{t("Password (new)")}</div>
+                <div className="admin-grid-head">{t("Approved")}</div>
+                <div className="admin-grid-head">{t("Admin")}</div>
+                <div className="admin-grid-head">{t("Telegram")}</div>
+                <div className="admin-grid-head">{t("Timezone")}</div>
+                <div className="admin-grid-head">{t("Actions")}</div>
 
                 {users.map((entry) => (
                   <Fragment key={entry.id}>
@@ -1809,7 +1816,7 @@ function App() {
                     <input
                       type="password"
                       minLength={6}
-                      placeholder="Leave blank to keep"
+                      placeholder={t("Leave blank to keep")}
                       value={entry.newPassword || ""}
                       onChange={(e) => updateUserDraft(entry.id, { newPassword: e.target.value })}
                     />
@@ -1819,7 +1826,7 @@ function App() {
                         checked={Boolean(entry.isApproved)}
                         onChange={(e) => updateUserDraft(entry.id, { isApproved: e.target.checked })}
                       />
-                      Approved
+                      {t("Approved")}
                     </label>
                     <label className="checkbox-wrap">
                       <input
@@ -1827,7 +1834,7 @@ function App() {
                         checked={Boolean(entry.isAdmin)}
                         onChange={(e) => updateUserDraft(entry.id, { isAdmin: e.target.checked })}
                       />
-                      Admin
+                      {t("Admin")}
                     </label>
                     <div className="admin-telegram-cell">
                       <span className={entry.telegramStatus === "connected" ? "status-connected" : "status-not-connected"}>
@@ -1846,12 +1853,12 @@ function App() {
                         className="link-button"
                         onClick={() => updateUserDraft(entry.id, { timezone: detectBrowserTimezone() })}
                       >
-                        Use system
+                        {t("Use system")}
                       </button>
                     </div>
                     <div className="admin-row-actions">
                       <button type="button" onClick={() => saveUser(entry)}>
-                        Save
+                        {t("Save")}
                       </button>
                       <button
                         type="button"
@@ -1859,7 +1866,7 @@ function App() {
                         disabled={entry.telegramStatus !== "connected"}
                         onClick={() => openAdminTelegramMessageDialog(entry)}
                       >
-                        Send Telegram
+                        {t("Send Telegram")}
                       </button>
                     </div>
                   </Fragment>
@@ -1867,10 +1874,10 @@ function App() {
               </div>
 
 
-              <h4>Translations</h4>
+              <h4>{t("Translations")}</h4>
               <div className="translation-admin-tools">
                 <button type="button" onClick={exportTranslations}>
-                  Export translations (Excel)
+                  {t("Export translations (Excel)")}
                 </button>
                 <div className="translation-import-row">
                   <input
@@ -1880,30 +1887,30 @@ function App() {
                     onChange={(e) => setTranslationImportFile(e.target.files?.[0] || null)}
                   />
                   <button type="button" onClick={importTranslations} disabled={!translationImportFile || translationImporting}>
-                    {translationImporting ? "Importing..." : "Import translations (Excel)"}
+                    {translationImporting ? t("Importing...") : t("Import translations (Excel)")}
                   </button>
                 </div>
               </div>
 
-              <h4>Telegram bot settings</h4>
+              <h4>{t("Telegram bot settings")}</h4>
               <div className="settings-grid">
-                <label htmlFor="bot-token">Bot key</label>
+                <label htmlFor="bot-token">{t("Bot key")}</label>
                 <input
                   id="bot-token"
                   type="password"
-                  placeholder={telegramAdmin.hasBotToken ? "Saved (enter to replace)" : "Enter bot token"}
+                  placeholder={telegramAdmin.hasBotToken ? t("Saved (enter to replace)") : t("Enter bot token")}
                   value={telegramAdmin.botToken}
                   onChange={(e) => setTelegramAdmin((current) => ({ ...current, botToken: e.target.value }))}
                 />
 
-                <label htmlFor="bot-name">Bot name</label>
+                <label htmlFor="bot-name">{t("Bot name")}</label>
                 <input
                   id="bot-name"
                   value={telegramAdmin.botName}
                   onChange={(e) => setTelegramAdmin((current) => ({ ...current, botName: e.target.value }))}
                 />
 
-                <label htmlFor="bot-link">Bot link</label>
+                <label htmlFor="bot-link">{t("Bot link")}</label>
                 <input
                   id="bot-link"
                   placeholder="https://t.me/your_bot"
@@ -1913,7 +1920,7 @@ function App() {
 
                 <div className="settings-actions">
                   <button type="button" onClick={saveTelegramAdminSettings}>
-                    Save Telegram settings
+                    {t("Save Telegram settings")}
                   </button>
                 </div>
               </div>
@@ -1924,23 +1931,23 @@ function App() {
 
       {activePage === "settings" && (
         <section className="calendar-card">
-          <h3>User Settings</h3>
+          <h3>{t("User Settings")}</h3>
           {settingsLoading ? (
-            <p>Loading settings...</p>
+            <p>{t("Loading settings...")}</p>
           ) : (
             <>
               <section className="telegram-subscription-block">
-                <h4>Telegram notifications</h4>
-                <p>Connect your Telegram chat to receive notifications.</p>
+                <h4>{t("Telegram notifications")}</h4>
+                <p>{t("Connect your Telegram chat to receive notifications.")}</p>
                 <ol>
                   <li>
-                    Open the bot:{" "}
+                    {t("Open the bot")}:{" "}
                     {telegramUser.botLink ? (
                       <a href={telegramUser.botLink} target="_blank" rel="noreferrer">
                         {telegramUser.botLink}
                       </a>
                     ) : (
-                      <span>Bot link not configured by admin yet.</span>
+                      <span>{t("Bot link not configured by admin yet.")}</span>
                     )}
                   </li>
                   <li>
@@ -1950,14 +1957,14 @@ function App() {
                     </button>
                   </li>
                   <li>
-                    After sending message from step 2
+                    {t("After sending message from step 2")}
                     <button type="button" className="verify-telegram-button" onClick={verifyTelegramSubscription} disabled={!telegramUser.hasBotToken || !telegramUser.generatedId}>
                       Verify connection
                     </button>
                   </li>
                 </ol>
                 <p>
-                  Status: <strong>{telegramUser.status}</strong>
+                  {t("Status")}: <strong>{telegramUser.status}</strong>
                 </p>
                 <button type="button" onClick={generateTelegramId}>
                   {telegramUser.generatedId ? t("Regenerate subscription id") : t("Generate subscription id")}
@@ -1965,9 +1972,9 @@ function App() {
               </section>
 
               <section className="password-block">
-                <h4>Time zone</h4>
+                <h4>{t("Time zone")}</h4>
                 <form className="settings-grid" onSubmit={saveOwnTimezone}>
-                  <label htmlFor="timezone">IANA Timezone</label>
+                  <label htmlFor="timezone">{t("IANA Timezone")}</label>
                   <div className="timezone-input-wrap">
                     <input
                       id="timezone"
@@ -1978,19 +1985,19 @@ function App() {
                       required
                     />
                     <button type="button" className="link-button" onClick={() => setTimezoneFormValue(detectBrowserTimezone())}>
-                      Use current system timezone
+                      {t("Use current system timezone")}
                     </button>
                   </div>
                   <div className="settings-actions">
-                    <button type="submit">Save timezone</button>
+                    <button type="submit">{t("Save timezone")}</button>
                   </div>
                 </form>
               </section>
 
               <section className="password-block">
-                <h4>Change password</h4>
+                <h4>{t("Change password")}</h4>
                 <form className="settings-grid" onSubmit={changeOwnPassword}>
-                  <label htmlFor="current-password">Current password</label>
+                  <label htmlFor="current-password">{t("Current password")}</label>
                   <input
                     id="current-password"
                     type="password"
@@ -2004,7 +2011,7 @@ function App() {
                     required
                   />
 
-                  <label htmlFor="new-password">New password</label>
+                  <label htmlFor="new-password">{t("New password")}</label>
                   <input
                     id="new-password"
                     type="password"
