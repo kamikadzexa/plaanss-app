@@ -1474,7 +1474,7 @@ function App() {
                   </li>
                   <li>
                     After sending message from step 2 {" "}
-                    <button type="button" className="link-button inline-link-button" onClick={verifyTelegramSubscription}>
+                    <button type="button" className="link-button inline-link-button" onClick={verifyTelegramSubscription} disabled={!telegramUser.hasBotToken || !telegramUser.generatedId}>
                       click here
                     </button>
                   </li>
@@ -1482,8 +1482,8 @@ function App() {
                 <p>
                   Status: <strong>{telegramUser.status}</strong>
                 </p>
-                <button type="button" onClick={generateTelegramId} disabled={!telegramUser.hasBotToken}>
-                  Generate subscription id
+                <button type="button" onClick={generateTelegramId}>
+                  {telegramUser.generatedId ? "Regenerate subscription id" : "Generate subscription id"}
                 </button>
               </section>
 

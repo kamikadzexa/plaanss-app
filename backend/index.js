@@ -119,6 +119,24 @@ const fetchTelegramUpdates = async (botToken, offset) => {
   return data.result || [];
 };
 
+
+const sendTelegramMessage = async (botToken, chatId, text) => {
+  const response = await fetch(buildTelegramApiUrl(botToken, "sendMessage"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+    }),
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.description || "Unable to send Telegram message");
+  }
+};
+
 const initDb = async () => {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
@@ -487,17 +505,25 @@ app.get("/admin/telegram-settings", authMiddleware, adminMiddleware, async (req,
 app.put("/admin/telegram-settings", authMiddleware, adminMiddleware, async (req, res) => {
   const { botToken, botName, botLink } = req.body;
 
-  if (!botToken || !botName || !botLink) {
-    return res.status(400).json({ error: "Bot token, bot name and bot link are required" });
+  if (!botName || !botLink) {
+    return res.status(400).json({ error: "Bot name and bot link are required" });
   }
 
   try {
+    const currentResult = await pool.query("SELECT bot_token FROM telegram_settings WHERE id = 1");
+    const currentToken = currentResult.rows[0]?.bot_token || "";
+    const nextToken = botToken?.trim() ? botToken.trim() : currentToken;
+
+    if (!nextToken) {
+      return res.status(400).json({ error: "Bot token is required for first-time setup" });
+    }
+
     const result = await pool.query(
       `UPDATE telegram_settings
        SET bot_token = $1, bot_name = $2, bot_link = $3, updated_at = NOW()
        WHERE id = 1
        RETURNING bot_token, bot_name, bot_link`,
-      [botToken.trim(), botName.trim(), botLink.trim()]
+      [nextToken, botName.trim(), botLink.trim()]
     );
 
     return res.json({ settings: sanitizeTelegramSettings(result.rows[0]) });
@@ -546,12 +572,19 @@ app.get("/user/telegram", authMiddleware, async (req, res) => {
     const settings = settingsResult.rows[0];
     const userData = userResult.rows[0];
 
+    let generatedId = userData?.telegram_subscription_token || "";
+
+    if (!userData?.telegram_chat_id && !generatedId) {
+      generatedId = crypto.randomUUID();
+      await pool.query("UPDATE users SET telegram_subscription_token = $1 WHERE id = $2", [generatedId, req.user.id]);
+    }
+
     return res.json({
       botName: settings?.bot_name || "",
       botLink: settings?.bot_link || "",
       hasBotToken: Boolean(settings?.bot_token),
       status: userData?.telegram_chat_id ? "Connected" : "Not connected",
-      generatedId: userData?.telegram_subscription_token || "",
+      generatedId,
     });
   } catch (error) {
     return res.status(500).json({ error: "Unable to load Telegram settings" });
@@ -614,6 +647,8 @@ app.post("/user/telegram/verify", authMiddleware, async (req, res) => {
       "UPDATE users SET telegram_chat_id = $1, telegram_subscription_token = NULL WHERE id = $2",
       [chatId, req.user.id]
     );
+
+    await sendTelegramMessage(settings.bot_token, chatId, "Connection successful ✅ Telegram notifications are enabled.");
 
     return res.json({ linked: true, status: "Connected" });
   } catch (error) {
