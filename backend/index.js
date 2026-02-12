@@ -80,6 +80,11 @@ const sanitizeEvent = (row) => ({
   end: row.end_time ? new Date(row.end_time).toISOString() : null,
   allDay: row.all_day,
   notes: row.notes || "",
+  telegramNotification: {
+    minutesBefore: Number(row.telegram_notify_minutes ?? 60),
+    notifyAll: row.telegram_notify_mode === "all",
+    userIds: Array.isArray(row.telegram_notify_user_ids) ? row.telegram_notify_user_ids : [],
+  },
 });
 
 const sanitizeUser = (row) => ({
@@ -87,6 +92,7 @@ const sanitizeUser = (row) => ({
   email: row.email,
   isAdmin: row.is_admin,
   isApproved: row.is_approved,
+  timezone: row.timezone || "UTC",
   createdAt: row.created_at,
   telegramStatus: row.telegram_chat_id ? "connected" : "not_connected",
 });
@@ -137,6 +143,139 @@ const sendTelegramMessage = async (botToken, chatId, text) => {
   }
 };
 
+const normalizeTelegramNotification = (input) => {
+  const minutesRaw = Number.parseInt(input?.minutesBefore, 10);
+  const minutesBefore = Number.isNaN(minutesRaw) ? 60 : Math.max(1, Math.min(7 * 24 * 60, minutesRaw));
+  const notifyAll = Boolean(input?.notifyAll);
+  const userIds = Array.isArray(input?.userIds)
+    ? [...new Set(input.userIds.map((value) => Number.parseInt(value, 10)).filter((value) => !Number.isNaN(value)))]
+    : [];
+
+  let mode = "none";
+  if (notifyAll) {
+    mode = "all";
+  } else if (userIds.length > 0) {
+    mode = "specific";
+  }
+
+  return {
+    minutesBefore,
+    mode,
+    userIds,
+  };
+};
+
+const normalizeTimezone = (value) => {
+  const timezone = `${value || ""}`.trim();
+  if (!timezone) {
+    return "UTC";
+  }
+
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format(new Date());
+    return timezone;
+  } catch (error) {
+    return "UTC";
+  }
+};
+
+const formatEventNotificationMessage = (event, timezone) => {
+  const start = event.start_time ? new Date(event.start_time) : null;
+  const safeTimezone = normalizeTimezone(timezone);
+  const now = new Date();
+  const minutesToStart = start && !Number.isNaN(start.getTime()) ? Math.max(0, Math.ceil((start.getTime() - now.getTime()) / 60000)) : 0;
+  const startLabel =
+    start && !Number.isNaN(start.getTime())
+      ? new Intl.DateTimeFormat("en-GB", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+          timeZone: safeTimezone,
+        }).format(start)
+      : "unknown time";
+
+  return `🔔 ${event.title} starts in *${minutesToStart} minutes to its beginning*\n${event.notes || "No description"}\n${startLabel} (${safeTimezone})`;
+};
+
+const dispatchPendingEventNotifications = async () => {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const pendingResult = await client.query(
+      `SELECT id, title, start_time, notes, telegram_notify_mode, telegram_notify_user_ids
+       FROM events
+       WHERE telegram_notified_at IS NULL
+         AND telegram_notify_mode <> 'none'
+         AND start_time - make_interval(mins => telegram_notify_minutes) <= NOW()
+         AND start_time > NOW()`
+    );
+
+    if (!pendingResult.rows.length) {
+      await client.query("COMMIT");
+      return;
+    }
+
+    const settingsResult = await client.query("SELECT bot_token FROM telegram_settings WHERE id = 1");
+    const botToken = settingsResult.rows[0]?.bot_token;
+
+    if (!botToken) {
+      await client.query("COMMIT");
+      return;
+    }
+
+    for (const event of pendingResult.rows) {
+      let recipientsQuery = null;
+      let recipientsParams = [];
+
+      if (event.telegram_notify_mode === "all") {
+        recipientsQuery =
+          "SELECT telegram_chat_id, timezone FROM users WHERE is_approved = TRUE AND telegram_chat_id IS NOT NULL";
+      } else if (event.telegram_notify_mode === "specific") {
+        const userIds = Array.isArray(event.telegram_notify_user_ids) ? event.telegram_notify_user_ids : [];
+        if (!userIds.length) {
+          await client.query("UPDATE events SET telegram_notified_at = NOW() WHERE id = $1", [event.id]);
+          continue;
+        }
+
+        recipientsQuery =
+          "SELECT telegram_chat_id, timezone FROM users WHERE is_approved = TRUE AND telegram_chat_id IS NOT NULL AND id = ANY($1::int[])";
+        recipientsParams = [userIds];
+      }
+
+      if (!recipientsQuery) {
+        await client.query("UPDATE events SET telegram_notified_at = NOW() WHERE id = $1", [event.id]);
+        continue;
+      }
+
+      const recipientsResult = await client.query(recipientsQuery, recipientsParams);
+      
+
+      for (const recipient of recipientsResult.rows) {
+        try {
+          const message = formatEventNotificationMessage(event, recipient.timezone);
+          await sendTelegramMessage(botToken, recipient.telegram_chat_id, message);
+        } catch (sendError) {
+          console.error(`Telegram event notification failed for event ${event.id}:`, sendError.message);
+        }
+      }
+
+      await client.query("UPDATE events SET telegram_notified_at = NOW() WHERE id = $1", [event.id]);
+    }
+
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Failed to dispatch event notifications:", error.message);
+  } finally {
+    client.release();
+  }
+};
+
 const initDb = async () => {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
@@ -151,6 +290,8 @@ const initDb = async () => {
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_approved BOOLEAN DEFAULT FALSE");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_subscription_token TEXT");
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone TEXT DEFAULT 'UTC'");
+  await pool.query("UPDATE users SET timezone = 'UTC' WHERE timezone IS NULL OR timezone = ''");
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS events (
@@ -164,6 +305,14 @@ const initDb = async () => {
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
+
+  await pool.query("ALTER TABLE events ADD COLUMN IF NOT EXISTS telegram_notify_minutes INTEGER DEFAULT 60");
+  await pool.query("ALTER TABLE events ADD COLUMN IF NOT EXISTS telegram_notify_mode TEXT DEFAULT 'none'");
+  await pool.query("ALTER TABLE events ADD COLUMN IF NOT EXISTS telegram_notify_user_ids INTEGER[] DEFAULT ARRAY[]::INTEGER[]");
+  await pool.query("ALTER TABLE events ADD COLUMN IF NOT EXISTS telegram_notified_at TIMESTAMPTZ");
+  await pool.query(
+    "UPDATE events SET telegram_notify_mode = 'none' WHERE telegram_notify_mode IS NULL OR telegram_notify_mode NOT IN ('none', 'all', 'specific')"
+  );
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS telegram_settings (
@@ -222,13 +371,14 @@ app.get("/health", async (req, res) => {
 });
 
 app.post("/auth/register", async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, timezone } = req.body;
 
   if (!email || !password || password.length < 6) {
     return res.status(400).json({ error: "Email and password (min 6 chars) are required" });
   }
 
   const normalizedEmail = email.toLowerCase().trim();
+  const normalizedTimezone = normalizeTimezone(timezone);
 
   try {
     const userCountResult = await pool.query("SELECT COUNT(*)::int AS count FROM users");
@@ -236,10 +386,10 @@ app.post("/auth/register", async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password, 10);
     const result = await pool.query(
-      `INSERT INTO users (email, password_hash, is_admin, is_approved)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, email, is_admin, is_approved`,
-      [normalizedEmail, passwordHash, isFirstUser, isFirstUser]
+      `INSERT INTO users (email, password_hash, is_admin, is_approved, timezone)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, email, is_admin, is_approved, timezone`,
+      [normalizedEmail, passwordHash, isFirstUser, isFirstUser, normalizedTimezone]
     );
 
     const user = result.rows[0];
@@ -299,7 +449,7 @@ app.post("/auth/login", async (req, res) => {
 
 app.get("/auth/me", authMiddleware, async (req, res) => {
   const result = await pool.query(
-    "SELECT id, email, is_admin, is_approved, created_at, telegram_chat_id FROM users WHERE id = $1",
+    "SELECT id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone FROM users WHERE id = $1",
     [req.user.id]
   );
   const user = result.rows[0];
@@ -327,7 +477,7 @@ app.post("/auth/logout", (req, res) => {
 app.get("/admin/users", authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT id, email, is_admin, is_approved, created_at, telegram_chat_id FROM users ORDER BY created_at ASC"
+      "SELECT id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone FROM users ORDER BY created_at ASC"
     );
     return res.json({ users: result.rows.map(sanitizeUser) });
   } catch (error) {
@@ -337,7 +487,7 @@ app.get("/admin/users", authMiddleware, adminMiddleware, async (req, res) => {
 
 app.put("/admin/users/:id", authMiddleware, adminMiddleware, async (req, res) => {
   const { id } = req.params;
-  const { email, password, isAdmin, isApproved } = req.body;
+  const { email, password, isAdmin, isApproved, timezone } = req.body;
 
   if (!email || !email.trim()) {
     return res.status(400).json({ error: "Email is required" });
@@ -357,6 +507,7 @@ app.put("/admin/users/:id", authMiddleware, adminMiddleware, async (req, res) =>
     }
 
     const normalizedEmail = email.toLowerCase().trim();
+    const normalizedTimezone = normalizeTimezone(timezone);
 
     if (password && password.length < 6) {
       return res.status(400).json({ error: "Password must be at least 6 characters" });
@@ -369,10 +520,11 @@ app.put("/admin/users/:id", authMiddleware, adminMiddleware, async (req, res) =>
          SET email = $1,
              is_admin = $2,
              is_approved = $3,
-             password_hash = $4
-         WHERE id = $5
-         RETURNING id, email, is_admin, is_approved, created_at, telegram_chat_id`,
-        [normalizedEmail, Boolean(isAdmin), Boolean(isApproved), passwordHash, id]
+             password_hash = $4,
+             timezone = $5
+         WHERE id = $6
+         RETURNING id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone`,
+        [normalizedEmail, Boolean(isAdmin), Boolean(isApproved), passwordHash, normalizedTimezone, id]
       );
       return res.json({ user: sanitizeUser(result.rows[0]) });
     }
@@ -381,10 +533,11 @@ app.put("/admin/users/:id", authMiddleware, adminMiddleware, async (req, res) =>
       `UPDATE users
        SET email = $1,
            is_admin = $2,
-           is_approved = $3
-       WHERE id = $4
-       RETURNING id, email, is_admin, is_approved, created_at, telegram_chat_id`,
-      [normalizedEmail, Boolean(isAdmin), Boolean(isApproved), id]
+           is_approved = $3,
+           timezone = $4
+       WHERE id = $5
+       RETURNING id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone`,
+      [normalizedEmail, Boolean(isAdmin), Boolean(isApproved), normalizedTimezone, id]
     );
 
     return res.json({ user: sanitizeUser(result.rows[0]) });
@@ -405,7 +558,10 @@ app.get("/events", authMiddleware, async (req, res) => {
     }
 
     const result = await pool.query(
-      "SELECT id, title, start_time, end_time, all_day, notes FROM events ORDER BY start_time ASC"
+      `SELECT id, title, start_time, end_time, all_day, notes,
+              telegram_notify_minutes, telegram_notify_mode, telegram_notify_user_ids
+       FROM events
+       ORDER BY start_time ASC`
     );
 
     return res.json({ events: result.rows.map(sanitizeEvent) });
@@ -415,7 +571,7 @@ app.get("/events", authMiddleware, async (req, res) => {
 });
 
 app.post("/events", authMiddleware, async (req, res) => {
-  const { title, start, end, allDay, notes } = req.body;
+  const { title, start, end, allDay, notes, telegramNotification } = req.body;
 
   if (!title || !start) {
     return res.status(400).json({ error: "Event title and start are required" });
@@ -427,11 +583,27 @@ app.post("/events", authMiddleware, async (req, res) => {
       return res.status(403).json({ error: "User is not approved" });
     }
 
+    const notification = normalizeTelegramNotification(telegramNotification);
+
     const result = await pool.query(
-      `INSERT INTO events (user_id, title, start_time, end_time, all_day, notes)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, title, start_time, end_time, all_day, notes`,
-      [req.user.id, title.trim(), start, end || null, Boolean(allDay), notes || ""]
+      `INSERT INTO events (
+         user_id, title, start_time, end_time, all_day, notes,
+         telegram_notify_minutes, telegram_notify_mode, telegram_notify_user_ids, telegram_notified_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL)
+       RETURNING id, title, start_time, end_time, all_day, notes,
+                 telegram_notify_minutes, telegram_notify_mode, telegram_notify_user_ids`,
+      [
+        req.user.id,
+        title.trim(),
+        start,
+        end || null,
+        Boolean(allDay),
+        notes || "",
+        notification.minutesBefore,
+        notification.mode,
+        notification.userIds,
+      ]
     );
 
     return res.status(201).json({ event: sanitizeEvent(result.rows[0]) });
@@ -442,7 +614,7 @@ app.post("/events", authMiddleware, async (req, res) => {
 
 app.put("/events/:id", authMiddleware, async (req, res) => {
   const { id } = req.params;
-  const { title, start, end, allDay, notes } = req.body;
+  const { title, start, end, allDay, notes, telegramNotification } = req.body;
 
   if (!title || !start) {
     return res.status(400).json({ error: "Event title and start are required" });
@@ -454,12 +626,33 @@ app.put("/events/:id", authMiddleware, async (req, res) => {
       return res.status(403).json({ error: "User is not approved" });
     }
 
+    const notification = normalizeTelegramNotification(telegramNotification);
+
     const result = await pool.query(
       `UPDATE events
-       SET title = $1, start_time = $2, end_time = $3, all_day = $4, notes = $5
-       WHERE id = $6
-       RETURNING id, title, start_time, end_time, all_day, notes`,
-      [title.trim(), start, end || null, Boolean(allDay), notes || "", id]
+       SET title = $1,
+           start_time = $2,
+           end_time = $3,
+           all_day = $4,
+           notes = $5,
+           telegram_notify_minutes = $6,
+           telegram_notify_mode = $7,
+           telegram_notify_user_ids = $8,
+           telegram_notified_at = NULL
+       WHERE id = $9
+       RETURNING id, title, start_time, end_time, all_day, notes,
+                 telegram_notify_minutes, telegram_notify_mode, telegram_notify_user_ids`,
+      [
+        title.trim(),
+        start,
+        end || null,
+        Boolean(allDay),
+        notes || "",
+        notification.minutesBefore,
+        notification.mode,
+        notification.userIds,
+        id,
+      ]
     );
 
     if (!result.rows.length) {
@@ -499,6 +692,72 @@ app.get("/admin/telegram-settings", authMiddleware, adminMiddleware, async (req,
     return res.json({ settings: sanitizeTelegramSettings(result.rows[0]) });
   } catch (error) {
     return res.status(500).json({ error: "Unable to load Telegram bot settings" });
+  }
+});
+
+app.get("/telegram/connected-users", authMiddleware, async (req, res) => {
+  try {
+    const userResult = await pool.query("SELECT is_approved FROM users WHERE id = $1", [req.user.id]);
+    if (!userResult.rows.length || !userResult.rows[0].is_approved) {
+      return res.status(403).json({ error: "User is not approved" });
+    }
+
+    const result = await pool.query(
+      `SELECT id, email
+       FROM users
+       WHERE is_approved = TRUE
+         AND telegram_chat_id IS NOT NULL
+       ORDER BY email ASC`
+    );
+
+    return res.json({
+      users: result.rows.map((entry) => ({
+        id: entry.id,
+        email: entry.email,
+      })),
+    });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to load connected Telegram users" });
+  }
+});
+
+app.post("/admin/users/:id/telegram-message", authMiddleware, adminMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const message = `${req.body?.message || ""}`.trim();
+
+  if (!message) {
+    return res.status(400).json({ error: "Message is required" });
+  }
+
+  if (message.length > 4000) {
+    return res.status(400).json({ error: "Message is too long" });
+  }
+
+  try {
+    const [settingsResult, userResult] = await Promise.all([
+      pool.query("SELECT bot_token FROM telegram_settings WHERE id = 1"),
+      pool.query("SELECT id, email, telegram_chat_id FROM users WHERE id = $1", [id]),
+    ]);
+
+    const botToken = settingsResult.rows[0]?.bot_token;
+    if (!botToken) {
+      return res.status(400).json({ error: "Telegram bot is not configured" });
+    }
+
+    const target = userResult.rows[0];
+    if (!target) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (!target.telegram_chat_id) {
+      return res.status(400).json({ error: "User has not connected Telegram bot" });
+    }
+
+    await sendTelegramMessage(botToken, target.telegram_chat_id, message);
+
+    return res.json({ success: true, sentTo: { id: target.id, email: target.email } });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Unable to send Telegram message" });
   }
 });
 
@@ -559,6 +818,25 @@ app.put("/user/password", authMiddleware, async (req, res) => {
     return res.status(204).send();
   } catch (error) {
     return res.status(500).json({ error: "Unable to change password" });
+  }
+});
+
+app.put("/user/timezone", authMiddleware, async (req, res) => {
+  const normalizedTimezone = normalizeTimezone(req.body?.timezone);
+
+  try {
+    const result = await pool.query(
+      "UPDATE users SET timezone = $1 WHERE id = $2 RETURNING id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone",
+      [normalizedTimezone, req.user.id]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    return res.json({ user: sanitizeUser(result.rows[0]) });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to update timezone" });
   }
 });
 
@@ -658,6 +936,12 @@ app.post("/user/telegram/verify", authMiddleware, async (req, res) => {
 
 initDb()
   .then(() => {
+    setInterval(() => {
+      dispatchPendingEventNotifications();
+    }, 60 * 1000);
+
+    dispatchPendingEventNotifications();
+
     app.listen(PORT, () => {
       console.log(`Backend running on ${PORT}`);
     });

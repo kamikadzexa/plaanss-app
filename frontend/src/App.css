@@ -356,8 +356,14 @@ button:hover {
 
 .admin-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 2fr) 1fr 1fr minmax(180px, 1.5fr) auto;
+  grid-template-columns: minmax(220px, 2fr) minmax(180px, 1.5fr) 1fr 1fr minmax(130px, 1fr) minmax(180px, 1.4fr) minmax(190px, 1.4fr);
   gap: 10px;
+  align-items: center;
+}
+
+.admin-row-actions {
+  display: flex;
+  gap: 8px;
   align-items: center;
 }
 
@@ -377,6 +383,50 @@ button:hover {
 .checkbox-wrap input {
   width: 18px;
   height: 18px;
+}
+
+.telegram-event-settings {
+  border: 1px solid #dce3f4;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.telegram-event-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.telegram-event-row input {
+  max-width: 140px;
+}
+
+.telegram-user-pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.telegram-user-pick-list p {
+  margin: 0;
+  color: #4b546a;
+}
+
+.admin-telegram-cell {
+  font-weight: 600;
+}
+
+.status-connected {
+  color: #168a3e;
+}
+
+.status-not-connected {
+  color: #6e768c;
 }
 
 .error-text {
@@ -706,6 +756,16 @@ button:hover {
   grid-column: 2;
 }
 
+.timezone-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timezone-input-wrap input {
+  min-width: 0;
+}
+
 .telegram-subscription-block,
 .password-block {
   border: 1px solid #dce3f4;
@@ -723,9 +783,25 @@ button:hover {
   font-weight: 700;
 }
 
+.verify-telegram-button,
+.copy-telegram-button {
+  margin-left: 8px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+}
+
+.telegram-subscription-block li {
+  margin-bottom: 8px;
+}
+
 @media (max-width: 768px) {
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+
+  .timezone-input-wrap {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .settings-actions {
