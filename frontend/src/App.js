@@ -3,6 +3,9 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import listPlugin from "@fullcalendar/list";
+import * as XLSX from "xlsx";
+import enCommon from "./locales/en/common.json";
+import ruCommon from "./locales/ru/common.json";
 import "./App.css";
 
 const API_BASE =
@@ -32,6 +35,12 @@ const blankTelegramInfo = {
 };
 const blankTelegramAdmin = { botToken: "", botName: "", botLink: "", hasBotToken: false };
 const blankAdminTelegramMessage = { userId: "", userEmail: "", message: "" };
+const supportedLanguages = ["en", "ru"];
+const localeBundles = {
+  en: enCommon,
+  ru: ruCommon,
+};
+const translationsPortalUrl = process.env.REACT_APP_TRANSLATIONS_PORTAL_URL || "https://crowdin.com";
 const detectBrowserTimezone = () => {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -284,7 +293,17 @@ function App() {
   const [authMode, setAuthMode] = useState("login");
   const [authForm, setAuthForm] = useState(blankAuth);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
+  const [language, setLanguage] = useState(() => {
+    if (typeof window === "undefined") {
+      return "en";
+    }
+
+    const savedLanguage = window.localStorage.getItem("plaanss_language");
+    return supportedLanguages.includes(savedLanguage) ? savedLanguage : "en";
+  });
+  const [translationCatalog, setTranslationCatalog] = useState(localeBundles);
   const [activePage, setActivePage] = useState("calendar");
   const [users, setUsers] = useState([]);
   const [adminLoading, setAdminLoading] = useState(false);
@@ -307,6 +326,107 @@ function App() {
   const [eventForm, setEventForm] = useState(blankEventForm);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const timezoneOptions = useMemo(() => getAvailableTimezones(), []);
+
+  const t = useCallback(
+    (key, fallback = key) => translationCatalog[language]?.[key] || translationCatalog.en?.[key] || fallback,
+    [language, translationCatalog]
+  );
+
+  const exportTranslationsToExcel = useCallback(() => {
+    const keySet = new Set([
+      ...Object.keys(translationCatalog.en || {}),
+      ...Object.keys(translationCatalog.ru || {}),
+    ]);
+    const rows = [...keySet]
+      .sort()
+      .map((key) => ({
+        key,
+        en: translationCatalog.en?.[key] || "",
+        ru: translationCatalog.ru?.[key] || "",
+      }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows, {
+      header: ["key", "en", "ru"],
+    });
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "translations");
+    XLSX.writeFile(workbook, "plaanss-translations.xlsx");
+    setNotice("Translations exported to plaanss-translations.xlsx");
+    setError("");
+  }, [translationCatalog]);
+
+  const importTranslationsFromExcel = useCallback(
+    async (event) => {
+      const [file] = event.target.files || [];
+      if (!file) {
+        return;
+      }
+
+      try {
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const sheetName = workbook.SheetNames[0];
+        if (!sheetName) {
+          throw new Error("Excel file does not contain any sheets.");
+        }
+
+        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+          defval: "",
+        });
+        const nextCatalog = {
+          en: { ...(translationCatalog.en || {}) },
+          ru: { ...(translationCatalog.ru || {}) },
+        };
+
+        rows.forEach((row) => {
+          const key = String(row.key || "").trim();
+          if (!key) {
+            return;
+          }
+
+          const enValue = String(row.en || "").trim();
+          const ruValue = String(row.ru || "").trim();
+          if (enValue) {
+            nextCatalog.en[key] = enValue;
+          }
+          if (ruValue) {
+            nextCatalog.ru[key] = ruValue;
+          }
+        });
+
+        setTranslationCatalog(nextCatalog);
+        setNotice("Translations imported from Excel. Review in app and sync to locale JSON files in Git.");
+        setError("");
+      } catch (importError) {
+        setError(importError.message || "Failed to import translations from Excel.");
+        setNotice("");
+      } finally {
+        event.target.value = "";
+      }
+    },
+    [translationCatalog]
+  );
+
+  const exportRuntimeLocaleJson = useCallback(() => {
+    ["en", "ru"].forEach((locale) => {
+      const payload = JSON.stringify(translationCatalog[locale] || {}, null, 2);
+      const blob = new Blob([`${payload}\n`], { type: "application/json" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `${locale}.common.runtime.json`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    });
+
+    setNotice("Downloaded runtime locale JSON snapshots for EN and RU.");
+    setError("");
+  }, [translationCatalog]);
+
+  const onLanguageChange = useCallback((event) => {
+    const nextLanguage = event.target.value;
+    setLanguage(nextLanguage);
+    window.localStorage.setItem("plaanss_language", nextLanguage);
+  }, []);
 
   const authHeader = useMemo(() => {
     const headers = { "Content-Type": "application/json" };
@@ -1140,9 +1260,9 @@ function App() {
     return (
       <div className="auth-shell">
         <form className="auth-card" onSubmit={handleAuthSubmit}>
-          <h1>Plaanss Calendar</h1>
-          <p>{authMode === "login" ? "Sign in to your calendar" : "Create a new account"}</p>
-          <label htmlFor="email">Email</label>
+          <h1>{t("app.name", "Plaanss Calendar")}</h1>
+          <p>{authMode === "login" ? t("auth.signInSubtitle", "Sign in to your calendar") : t("auth.registerSubtitle", "Create a new account")}</p>
+          <label htmlFor="email">{t("auth.email", "Email")}</label>
           <input
             id="email"
             type="email"
@@ -1151,7 +1271,7 @@ function App() {
             required
           />
 
-          <label htmlFor="password">Password</label>
+          <label htmlFor="password">{t("auth.password", "Password")}</label>
           <input
             id="password"
             type="password"
@@ -1164,7 +1284,7 @@ function App() {
           {error && <p className="error-text">{error}</p>}
 
           <button type="submit" disabled={loading}>
-            {loading ? "Please wait..." : authMode === "login" ? "Login" : "Register"}
+            {loading ? t("auth.loading", "Please wait...") : authMode === "login" ? t("auth.login", "Login") : t("auth.register", "Register")}
           </button>
 
           <button
@@ -1175,7 +1295,7 @@ function App() {
               setAuthMode((mode) => (mode === "login" ? "register" : "login"));
             }}
           >
-            {authMode === "login" ? "Need an account? Register" : "Already have an account? Login"}
+            {authMode === "login" ? t("auth.needAccount", "Need an account? Register") : t("auth.haveAccount", "Already have an account? Login")}
           </button>
         </form>
       </div>
@@ -1196,24 +1316,32 @@ function App() {
           </p>
         </div>
         <div className="header-actions">
+          <label className="language-selector" htmlFor="language-selector">
+            Language
+          </label>
+          <select id="language-selector" value={language} onChange={onLanguageChange}>
+            <option value="en">English</option>
+            <option value="ru">Русский</option>
+          </select>
           <button type="button" onClick={() => setActivePage("calendar")}>
-            Calendar
+            {t("header.calendar", "Calendar")}
           </button>
           {user.isAdmin && (
             <button type="button" onClick={goToAdminPage}>
-              Management
+              {t("header.management", "Management")}
             </button>
           )}
           <button type="button" onClick={goToSettingsPage}>
-            Settings
+            {t("header.settings", "Settings")}
           </button>
           <button type="button" onClick={logout}>
-            Logout
+            {t("header.logout", "Logout")}
           </button>
         </div>
       </header>
 
       {error && <p className="error-text">{error}</p>}
+      {notice && <p className="success-text">{notice}</p>}
 
       <datalist id="timezone-options">
         {timezoneOptions.map((timezone) => (
@@ -1600,6 +1728,30 @@ function App() {
       {activePage === "admin" && user.isAdmin && (
         <section className="calendar-card">
           <h3>Management</h3>
+          <section className="translation-management-block">
+            <h4>Translation management</h4>
+            <p>Manage translations in Crowdin and use Excel import/export for manual updates.</p>
+            <div className="translation-actions">
+              <a className="translation-link" href={translationsPortalUrl} target="_blank" rel="noreferrer">
+                Open translation portal
+              </a>
+              <button type="button" onClick={exportTranslationsToExcel}>
+                Export to Excel
+              </button>
+              <label className="import-excel-label" htmlFor="import-translations-excel">
+                Import from Excel
+              </label>
+              <input
+                id="import-translations-excel"
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={importTranslationsFromExcel}
+              />
+              <button type="button" className="link-button" onClick={exportRuntimeLocaleJson}>
+                Export locale JSON snapshots
+              </button>
+            </div>
+          </section>
           {settingsLoading || adminLoading ? (
             <p>Loading...</p>
           ) : (
