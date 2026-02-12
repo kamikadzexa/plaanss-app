@@ -685,6 +685,35 @@ function App() {
     }
   };
 
+  const copyTelegramStartMessage = async () => {
+    const message = `/start ${telegramUser.generatedId || 'generated id'}`;
+
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(message);
+        setError("");
+        return;
+      } catch (copyError) {
+        // fallback below
+      }
+    }
+
+    try {
+      const textArea = document.createElement("textarea");
+      textArea.value = message;
+      textArea.setAttribute("readonly", "");
+      textArea.style.position = "absolute";
+      textArea.style.left = "-9999px";
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+      setError("");
+    } catch (fallbackError) {
+      setError("Unable to copy message automatically. Please copy it manually.");
+    }
+  };
+
   const changeOwnPassword = async (event) => {
     event.preventDefault();
 
@@ -1512,17 +1541,24 @@ function App() {
               <h4>User Management</h4>
               <div className="admin-grid">
                 <div className="admin-grid-head">Email</div>
+                <div className="admin-grid-head">Password (new)</div>
                 <div className="admin-grid-head">Approved</div>
                 <div className="admin-grid-head">Admin</div>
                 <div className="admin-grid-head">Telegram</div>
-                <div className="admin-grid-head">New Password</div>
-                <div className="admin-grid-head">Action</div>
+                <div className="admin-grid-head">Actions</div>
 
                 {users.map((entry) => (
                   <Fragment key={entry.id}>
                     <input
                       value={entry.email}
                       onChange={(e) => updateUserDraft(entry.id, { email: e.target.value })}
+                    />
+                    <input
+                      type="password"
+                      minLength={6}
+                      placeholder="Leave blank to keep"
+                      value={entry.newPassword || ""}
+                      onChange={(e) => updateUserDraft(entry.id, { newPassword: e.target.value })}
                     />
                     <label className="checkbox-wrap">
                       <input
@@ -1545,24 +1581,19 @@ function App() {
                         {entry.telegramStatus === "connected" ? "Connected" : "Not connected"}
                       </span>
                     </div>
-                    <input
-                      type="password"
-                      minLength={6}
-                      placeholder="Leave blank to keep"
-                      value={entry.newPassword || ""}
-                      onChange={(e) => updateUserDraft(entry.id, { newPassword: e.target.value })}
-                    />
-                    <button type="button" onClick={() => saveUser(entry)}>
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      className="link-button"
-                      disabled={entry.telegramStatus !== "connected"}
-                      onClick={() => openAdminTelegramMessageDialog(entry)}
-                    >
-                      Send Telegram
-                    </button>
+                    <div className="admin-row-actions">
+                      <button type="button" onClick={() => saveUser(entry)}>
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        className="link-button"
+                        disabled={entry.telegramStatus !== "connected"}
+                        onClick={() => openAdminTelegramMessageDialog(entry)}
+                      >
+                        Send Telegram
+                      </button>
+                    </div>
                   </Fragment>
                 ))}
               </div>
@@ -1627,11 +1658,14 @@ function App() {
                   </li>
                   <li>
                     Send <code>/start {telegramUser.generatedId || '"generated id"'}</code> in the chat.
+                    <button type="button" className="copy-telegram-button" onClick={copyTelegramStartMessage}>
+                      Copy message
+                    </button>
                   </li>
                   <li>
-                    After sending message from step 2 {" "}
-                    <button type="button" className="link-button inline-link-button" onClick={verifyTelegramSubscription} disabled={!telegramUser.hasBotToken || !telegramUser.generatedId}>
-                      click here
+                    After sending message from step 2
+                    <button type="button" className="verify-telegram-button" onClick={verifyTelegramSubscription} disabled={!telegramUser.hasBotToken || !telegramUser.generatedId}>
+                      Verify connection
                     </button>
                   </li>
                 </ol>
