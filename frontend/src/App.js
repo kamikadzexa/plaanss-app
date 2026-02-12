@@ -5,6 +5,57 @@ import interactionPlugin from "@fullcalendar/interaction";
 import listPlugin from "@fullcalendar/list";
 import "./App.css";
 
+
+const SUPPORTED_LANGUAGES = ["en", "ru"];
+
+const detectBrowserLanguage = () => {
+  if (typeof navigator === "undefined") {
+    return "en";
+  }
+
+  const candidate = (navigator.language || "en").toLowerCase().split("-")[0];
+  return SUPPORTED_LANGUAGES.includes(candidate) ? candidate : "en";
+};
+
+const UI_TRANSLATIONS = {
+  en: {
+    month: "Month",
+    week: "Week",
+    calendar: "Calendar",
+    management: "Management",
+    settings: "Settings",
+    logout: "Logout",
+    login: "Login",
+    register: "Register",
+    pleaseWait: "Please wait...",
+    noDescriptionProvided: "No description provided.",
+    timeUnavailable: "Time unavailable",
+    translationManagement: "Translation management",
+    exportTranslations: "Export CSV",
+    importTranslations: "Import CSV",
+    saveImportedTranslations: "Save imported translations",
+    selectLanguage: "Language",
+  },
+  ru: {
+    month: "Месяц",
+    week: "Неделя",
+    calendar: "Календарь",
+    management: "Управление",
+    settings: "Настройки",
+    logout: "Выйти",
+    login: "Войти",
+    register: "Регистрация",
+    pleaseWait: "Подождите...",
+    noDescriptionProvided: "Описание отсутствует.",
+    timeUnavailable: "Время недоступно",
+    translationManagement: "Управление переводами",
+    exportTranslations: "Экспорт CSV",
+    importTranslations: "Импорт CSV",
+    saveImportedTranslations: "Сохранить импортированные переводы",
+    selectLanguage: "Язык",
+  },
+};
+
 const API_BASE =
   process.env.REACT_APP_API_URL ||
   `${window.location.protocol}//${window.location.hostname}:8000`;
@@ -157,7 +208,7 @@ const formatDateTimeForTimezoneInput = (value, timezoneMode = "user") => {
   return formatDateTimeForInput(value);
 };
 
-const formatDateTimeEu = (value) => {
+const formatDateTimeEu = (value, language = "en") => {
   if (!value) {
     return "-";
   }
@@ -167,7 +218,7 @@ const formatDateTimeEu = (value) => {
     return "-";
   }
 
-  const weekday = new Intl.DateTimeFormat("en-GB", { weekday: "short" }).format(date);
+  const weekday = new Intl.DateTimeFormat(language === "ru" ? "ru-RU" : "en-GB", { weekday: "short" }).format(date);
   const day = String(date.getDate()).padStart(2, "0");
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const year = date.getFullYear();
@@ -212,15 +263,15 @@ const getEventStatus = (eventStart, eventEnd, now = new Date()) => {
   return "event-status-past";
 };
 
-const formatEventTimeRange = (eventStart, eventEnd) => {
+const formatEventTimeRange = (eventStart, eventEnd, language = "en", fallbackLabel = "Time unavailable") => {
   const start = new Date(eventStart);
   const end = eventEnd ? new Date(eventEnd) : null;
 
   if (Number.isNaN(start.getTime())) {
-    return "Time unavailable";
+    return fallbackLabel;
   }
 
-  const formatter = new Intl.DateTimeFormat("en-GB", {
+  const formatter = new Intl.DateTimeFormat(language === "ru" ? "ru-RU" : "en-GB", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -244,9 +295,9 @@ const formatLinkLabel = (url, maxLength = 42) => {
   return `${head}…${tail}`;
 };
 
-function LinkifiedText({ text }) {
+function LinkifiedText({ text, emptyText }) {
   if (!text) {
-    return <p className="event-description-empty">No description provided.</p>;
+    return <p className="event-description-empty">{emptyText}</p>;
   }
 
   const lines = text.split("\n");
@@ -302,27 +353,32 @@ function App() {
   const weekViewKey = isMobile ? "mobileWeek" : "weekRow";
   const [nowTick, setNowTick] = useState(Date.now());
   const [calendarRangeStart, setCalendarRangeStart] = useState(null);
+  const [language, setLanguage] = useState(detectBrowserLanguage);
+  const [translationsRows, setTranslationsRows] = useState([]);
+  const [translationsImportText, setTranslationsImportText] = useState("");
 
   const [eventDialogMode, setEventDialogMode] = useState(null);
   const [eventForm, setEventForm] = useState(blankEventForm);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const timezoneOptions = useMemo(() => getAvailableTimezones(), []);
+  const t = useCallback((key) => UI_TRANSLATIONS[language]?.[key] || UI_TRANSLATIONS.en[key] || key, [language]);
 
   const authHeader = useMemo(() => {
-    const headers = { "Content-Type": "application/json" };
+    const headers = { "Content-Type": "application/json", "X-UI-Language": language };
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
     return headers;
-  }, [token]);
+  }, [token, language]);
 
   const apiFetch = useCallback(
     (path, options = {}) =>
       fetch(`${API_BASE}${path}`, {
         credentials: "include",
         ...options,
+        headers: { "X-UI-Language": language, ...(options.headers || {}) },
       }),
-    []
+    [language]
   );
 
   const sortedEvents = useMemo(() => {
@@ -559,12 +615,120 @@ function App() {
     setTelegramConnectedUsers(data.users || []);
   };
 
+  const loadTranslations = async () => {
+    const response = await apiFetch(`/i18n/translations`, {
+      headers: authHeader,
+    });
+    const data = await parseJsonSafe(response);
+
+    if (!response.ok) {
+      throw new Error(data.error || "Unable to load translations");
+    }
+
+    setTranslationsRows(data.items || []);
+  };
+
+  const parseCsvRows = (csvText) => {
+    const lines = csvText.split(/\r?\n/).filter((line) => line.trim());
+    if (lines.length < 2) {
+      return [];
+    }
+
+    const parseLine = (line) => {
+      const result = [];
+      let current = "";
+      let insideQuotes = false;
+      for (let i = 0; i < line.length; i += 1) {
+        const ch = line[i];
+        if (ch === '"') {
+          if (insideQuotes && line[i + 1] === '"') {
+            current += '"';
+            i += 1;
+          } else {
+            insideQuotes = !insideQuotes;
+          }
+        } else if (ch === ',' && !insideQuotes) {
+          result.push(current);
+          current = "";
+        } else {
+          current += ch;
+        }
+      }
+      result.push(current);
+      return result;
+    };
+
+    return lines.slice(1).map((line) => {
+      const [key = "", en = "", ru = ""] = parseLine(line);
+      return { key: key.trim(), en, ru };
+    });
+  };
+
+  const exportTranslationsCsv = async () => {
+    try {
+      const response = await apiFetch(`/admin/translations/export`, { headers: authHeader });
+      if (!response.ok) {
+        const data = await parseJsonSafe(response);
+        throw new Error(data.error || "Unable to export translations");
+      }
+
+      const csv = await response.text();
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "translations.csv";
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setError("");
+    } catch (exportError) {
+      setError(exportError.message);
+    }
+  };
+
+  const importTranslationsCsv = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    file.text().then((content) => {
+      setTranslationsImportText(content);
+    });
+  };
+
+  const saveImportedTranslations = async () => {
+    const rows = parseCsvRows(translationsImportText);
+    if (!rows.length) {
+      setError("No translation rows found in CSV");
+      return;
+    }
+
+    try {
+      const response = await apiFetch(`/admin/translations/import`, {
+        method: "POST",
+        headers: authHeader,
+        body: JSON.stringify({ rows }),
+      });
+      const data = await parseJsonSafe(response);
+
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to import translations");
+      }
+
+      await loadTranslations();
+      setError("");
+    } catch (importError) {
+      setError(importError.message);
+    }
+  };
+
   const goToAdminPage = async () => {
     setActivePage("admin");
     setSettingsLoading(true);
 
     try {
-      await Promise.all([loadAdminUsers(), loadTelegramAdminSettings(), loadTelegramConnectedUsers()]);
+      await Promise.all([loadAdminUsers(), loadTelegramAdminSettings(), loadTelegramConnectedUsers(), loadTranslations()]);
       setError("");
     } catch (adminError) {
       setError(adminError.message);
@@ -772,6 +936,7 @@ function App() {
           ? {
               ...authForm,
               timezone: detectBrowserTimezone(),
+              language,
             }
           : authForm;
 
@@ -1108,11 +1273,11 @@ function App() {
   const calendarViews = [
     {
       key: "dayGridMonth",
-      label: "Month",
+      label: t("month"),
     },
     {
       key: weekViewKey,
-      label: "Week",
+      label: t("week"),
     },
   ];
 
@@ -1163,8 +1328,14 @@ function App() {
 
           {error && <p className="error-text">{error}</p>}
 
+          <label htmlFor="auth-language">{t("selectLanguage")}</label>
+          <select id="auth-language" value={language} onChange={(e) => setLanguage(e.target.value)}>
+            <option value="en">English</option>
+            <option value="ru">Русский</option>
+          </select>
+
           <button type="submit" disabled={loading}>
-            {loading ? "Please wait..." : authMode === "login" ? "Login" : "Register"}
+            {loading ? t("pleaseWait") : authMode === "login" ? t("login") : t("register")}
           </button>
 
           <button
@@ -1175,7 +1346,7 @@ function App() {
               setAuthMode((mode) => (mode === "login" ? "register" : "login"));
             }}
           >
-            {authMode === "login" ? "Need an account? Register" : "Already have an account? Login"}
+            {authMode === "login" ? "Need an account? " + t("register") : "Already have an account? " + t("login")}
           </button>
         </form>
       </div>
@@ -1196,19 +1367,24 @@ function App() {
           </p>
         </div>
         <div className="header-actions">
+          <label htmlFor="header-language" className="sr-only">{t("selectLanguage")}</label>
+          <select id="header-language" value={language} onChange={(e) => setLanguage(e.target.value)}>
+            <option value="en">EN</option>
+            <option value="ru">RU</option>
+          </select>
           <button type="button" onClick={() => setActivePage("calendar")}>
-            Calendar
+            {t("calendar")}
           </button>
           {user.isAdmin && (
             <button type="button" onClick={goToAdminPage}>
-              Management
+              {t("management")}
             </button>
           )}
           <button type="button" onClick={goToSettingsPage}>
-            Settings
+            {t("settings")}
           </button>
           <button type="button" onClick={logout}>
-            Logout
+            {t("logout")}
           </button>
         </div>
       </header>
@@ -1264,7 +1440,7 @@ function App() {
                 {mobileWeekDays.map((day) => (
                   <article key={day.key} className="mobile-week-day-row">
                     <h4>
-                      {new Intl.DateTimeFormat("en-GB", {
+                      {new Intl.DateTimeFormat(language === "ru" ? "ru-RU" : "en-GB", {
                         weekday: "long",
                         day: "2-digit",
                       }).format(day.date)}
@@ -1286,7 +1462,7 @@ function App() {
                             >
                               <span className="mobile-week-event-time">
                                 <span className="mobile-week-event-dot" aria-hidden="true" />
-                                {formatEventTimeRange(event.start, event.end)}
+                                {formatEventTimeRange(event.start, event.end, language, t("timeUnavailable"))}
                               </span>
                               <span className="mobile-week-event-name">{event.title || "Untitled event"}</span>
                             </button>
@@ -1300,6 +1476,7 @@ function App() {
             </section>
           ) : (
             <FullCalendar
+              locale={language === "ru" ? "ru" : "en-gb"}
             ref={calendarRef}
             plugins={[dayGridPlugin, interactionPlugin, listPlugin]}
             initialView={calendarView}
@@ -1314,13 +1491,13 @@ function App() {
             }}
             selectable
             firstDay={1}
-            locale="en-gb"
             dayHeaderContent={(arg) => {
+              const locale = language === "ru" ? "ru-RU" : "en-GB";
               if (arg.view.type === "dayGridMonth") {
-                return new Intl.DateTimeFormat("en-GB", { weekday: "long" }).format(arg.date);
+                return new Intl.DateTimeFormat(locale, { weekday: "long" }).format(arg.date);
               }
 
-              return new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "2-digit" }).format(arg.date);
+              return new Intl.DateTimeFormat(locale, { weekday: "long", day: "2-digit" }).format(arg.date);
             }}
             listDayFormat={{
               weekday: "long",
@@ -1576,13 +1753,13 @@ function App() {
               <>
                 <h3>{selectedEvent.title}</h3>
                 <p className="event-time-row">
-                  Starts: {formatDateTimeEu(selectedEvent.start)}
+                  Starts: {formatDateTimeEu(selectedEvent.start, language)}
                 </p>
                 <p className="event-time-row">
-                  Ends: {formatDateTimeEu(selectedEvent.end)}
+                  Ends: {formatDateTimeEu(selectedEvent.end, language)}
                 </p>
                 <h4>Description</h4>
-                <LinkifiedText text={selectedEvent.notes} />
+                <LinkifiedText text={selectedEvent.notes} emptyText={t("noDescriptionProvided")} />
                 <div className="event-form-actions">
                   <button type="button" onClick={startEditingSelectedEvent}>
                     Edit
@@ -1678,6 +1855,40 @@ function App() {
                     </div>
                   </Fragment>
                 ))}
+              </div>
+
+              <h4>{t("translationManagement")}</h4>
+              <div className="settings-grid">
+                <div className="settings-actions">
+                  <button type="button" onClick={exportTranslationsCsv}>
+                    {t("exportTranslations")}
+                  </button>
+                </div>
+                <label htmlFor="translations-import-file">{t("importTranslations")}</label>
+                <input id="translations-import-file" type="file" accept=".csv,text/csv" onChange={importTranslationsCsv} />
+                <textarea
+                  rows={8}
+                  value={translationsImportText}
+                  onChange={(e) => setTranslationsImportText(e.target.value)}
+                  placeholder="key,en,ru"
+                />
+                <div className="settings-actions">
+                  <button type="button" onClick={saveImportedTranslations}>
+                    {t("saveImportedTranslations")}
+                  </button>
+                </div>
+                <div className="admin-grid">
+                  <div className="admin-grid-head">Key</div>
+                  <div className="admin-grid-head">EN</div>
+                  <div className="admin-grid-head">RU</div>
+                  {translationsRows.map((row) => (
+                    <Fragment key={row.key}>
+                      <div>{row.key}</div>
+                      <div>{row.en}</div>
+                      <div>{row.ru}</div>
+                    </Fragment>
+                  ))}
+                </div>
               </div>
 
               <h4>Telegram bot settings</h4>
