@@ -816,3 +816,17 @@ button:hover {
   background: #fff;
   color: #1a1d26;
 }
+
+
+.translation-admin-tools {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.translation-import-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}

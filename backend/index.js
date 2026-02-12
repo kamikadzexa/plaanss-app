@@ -1044,6 +1044,52 @@ app.get("/translations/export", authMiddleware, adminMiddleware, async (req, res
   }
 });
 
+app.post("/translations/import-file", authMiddleware, adminMiddleware, async (req, res) => {
+  const contentBase64 = `${req.body?.contentBase64 || ""}`;
+
+  if (!contentBase64) {
+    return res.status(400).json({ error: "Translation file content is required" });
+  }
+
+  try {
+    const workbook = XLSX.read(Buffer.from(contentBase64, "base64"), { type: "buffer" });
+    const firstSheetName = workbook.SheetNames?.[0];
+
+    if (!firstSheetName) {
+      return res.status(400).json({ error: "Workbook does not contain any sheets" });
+    }
+
+    const worksheet = workbook.Sheets[firstSheetName];
+    const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+    for (const row of rows) {
+      const sourceText = `${row?.source_text || row?.sourceText || ""}`.trim();
+      if (!sourceText) {
+        continue;
+      }
+
+      const englishText = `${row?.english_text || row?.englishText || sourceText}`.trim() || sourceText;
+      const russianText = `${row?.russian_text || row?.russianText || ""}`.trim();
+      const sourceType = `${row?.source_type || row?.sourceType || "import"}`.trim() || "import";
+
+      await pool.query(
+        `INSERT INTO translation_entries (source_text, english_text, russian_text, source_type, updated_at)
+         VALUES ($1, $2, $3, $4, NOW())
+         ON CONFLICT (source_text) DO UPDATE
+         SET english_text = EXCLUDED.english_text,
+             russian_text = EXCLUDED.russian_text,
+             source_type = EXCLUDED.source_type,
+             updated_at = NOW()`,
+        [sourceText, englishText, russianText, sourceType]
+      );
+    }
+
+    return res.json({ success: true, imported: rows.length });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to import translations from file" });
+  }
+});
+
 app.post("/translations/import", authMiddleware, adminMiddleware, async (req, res) => {
   const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
 

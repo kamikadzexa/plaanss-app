@@ -335,6 +335,8 @@ function App() {
   const [language, setLanguage] = useState("en");
   const [translations, setTranslations] = useState({});
   const [capturedTranslations, setCapturedTranslations] = useState(false);
+  const [translationImportFile, setTranslationImportFile] = useState(null);
+  const [translationImporting, setTranslationImporting] = useState(false);
 
   const t = useCallback((text) => translations[text] || text, [translations]);
 
@@ -762,6 +764,84 @@ function App() {
       setError("");
     } catch (settingsError) {
       setError(settingsError.message);
+    }
+  };
+
+  const arrayBufferToBase64 = (arrayBuffer) => {
+    const bytes = new Uint8Array(arrayBuffer);
+    const chunkSize = 0x8000;
+    let binary = "";
+
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      const chunk = bytes.subarray(offset, offset + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+
+    return btoa(binary);
+  };
+
+  const exportTranslations = async () => {
+    try {
+      const response = await apiFetch(`/translations/export`, {
+        method: "GET",
+        headers: authHeader,
+      });
+
+      if (!response.ok) {
+        const data = await parseJsonSafe(response);
+        throw new Error(data.error || "Unable to export translations");
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = downloadUrl;
+      anchor.download = "translations.xlsx";
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(downloadUrl);
+      setError("");
+    } catch (exportError) {
+      setError(exportError.message);
+    }
+  };
+
+  const importTranslations = async () => {
+    if (!translationImportFile) {
+      setError("Choose an Excel file before importing.");
+      return;
+    }
+
+    try {
+      setTranslationImporting(true);
+      const buffer = await translationImportFile.arrayBuffer();
+      const contentBase64 = arrayBufferToBase64(buffer);
+
+      const response = await apiFetch(`/translations/import-file`, {
+        method: "POST",
+        headers: authHeader,
+        body: JSON.stringify({
+          filename: translationImportFile.name,
+          contentBase64,
+        }),
+      });
+      const data = await parseJsonSafe(response);
+
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to import translations");
+      }
+
+      setTranslationImportFile(null);
+      const fileInput = document.getElementById("translations-import-file");
+      if (fileInput) {
+        fileInput.value = "";
+      }
+      setError("");
+    } catch (importError) {
+      setError(importError.message);
+    } finally {
+      setTranslationImporting(false);
     }
   };
 
@@ -1784,6 +1864,25 @@ function App() {
                     </div>
                   </Fragment>
                 ))}
+              </div>
+
+
+              <h4>Translations</h4>
+              <div className="translation-admin-tools">
+                <button type="button" onClick={exportTranslations}>
+                  Export translations (Excel)
+                </button>
+                <div className="translation-import-row">
+                  <input
+                    id="translations-import-file"
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={(e) => setTranslationImportFile(e.target.files?.[0] || null)}
+                  />
+                  <button type="button" onClick={importTranslations} disabled={!translationImportFile || translationImporting}>
+                    {translationImporting ? "Importing..." : "Import translations (Excel)"}
+                  </button>
+                </div>
               </div>
 
               <h4>Telegram bot settings</h4>
