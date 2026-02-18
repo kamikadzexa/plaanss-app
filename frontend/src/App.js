@@ -1845,6 +1845,7 @@ function App() {
             eventOrder="start,title"
             displayEventTime
             displayEventEnd={!isMobile}
+            nextDayThreshold="24:00:00"
             eventTimeFormat={{
               hour: "2-digit",
               minute: "2-digit",
