@@ -403,7 +403,8 @@ button:hover {
 }
 
 .telegram-event-row input {
-  max-width: 140px;
+  width: 180px;
+  max-width: 100%;
 }
 
 .telegram-inline-checkbox {

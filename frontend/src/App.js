@@ -730,6 +730,19 @@ function App() {
     setEvents(eventsData.events || []);
   }, [apiFetch, authHeader]);
 
+  const loadTelegramConnectedUsers = useCallback(async () => {
+    const response = await apiFetch(`/telegram/connected-users`, {
+      headers: authHeader,
+    });
+    const data = await parseJsonSafe(response);
+
+    if (!response.ok) {
+      throw new Error(data.error || "Unable to load Telegram connected users");
+    }
+
+    setTelegramConnectedUsers(data.users || []);
+  }, [apiFetch, authHeader]);
+
   useEffect(() => {
     const bootstrap = async () => {
       try {
@@ -747,6 +760,12 @@ function App() {
         setUser(meData.user);
 
         await loadEvents();
+
+        try {
+          await loadTelegramConnectedUsers();
+        } catch (telegramUsersError) {
+          setTelegramConnectedUsers([]);
+        }
       } catch (bootError) {
         setUser(null);
         setEvents([]);
@@ -757,7 +776,7 @@ function App() {
     };
 
     bootstrap();
-  }, [apiFetch, authHeader, loadEvents, token]);
+  }, [apiFetch, authHeader, loadEvents, loadTelegramConnectedUsers, token]);
 
   const loadAdminUsers = async () => {
     if (!user?.isAdmin) {
@@ -828,19 +847,6 @@ function App() {
       generatedId: data.generatedId || "",
       dailyNotificationsEnabled: Boolean(data.dailyNotificationsEnabled),
     });
-  };
-
-  const loadTelegramConnectedUsers = async () => {
-    const response = await apiFetch(`/telegram/connected-users`, {
-      headers: authHeader,
-    });
-    const data = await parseJsonSafe(response);
-
-    if (!response.ok) {
-      throw new Error(data.error || "Unable to load Telegram connected users");
-    }
-
-    setTelegramConnectedUsers(data.users || []);
   };
 
   const loadTranslations = async () => {
@@ -1282,6 +1288,10 @@ function App() {
   };
 
   const openCreateDialog = (startValue) => {
+    loadTelegramConnectedUsers().catch(() => {
+      setTelegramConnectedUsers([]);
+    });
+
     const initial = startValue
       ? {
           ...blankEventForm,
@@ -1451,6 +1461,10 @@ function App() {
     if (!selectedEvent) {
       return;
     }
+
+    loadTelegramConnectedUsers().catch(() => {
+      setTelegramConnectedUsers([]);
+    });
 
     const timezoneMode = eventForm.timezoneMode || "user";
     const startParts = formatDateTimeForTimezoneInput(selectedEvent.start, timezoneMode);
