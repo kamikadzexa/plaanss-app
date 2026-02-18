@@ -184,13 +184,14 @@ const sendTelegramMessage = async (botToken, chatId, text) => {
   }
 };
 
-const sendTelegramPhotoByUrl = async (botToken, chatId, photoUrl) => {
+const sendTelegramPhotoByUrl = async (botToken, chatId, photoUrl, caption = "") => {
   const response = await fetch(buildTelegramApiUrl(botToken, "sendPhoto"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       chat_id: chatId,
       photo: photoUrl,
+      caption: caption ? `${caption}`.slice(0, 1024) : undefined,
     }),
   });
 
@@ -201,7 +202,7 @@ const sendTelegramPhotoByUrl = async (botToken, chatId, photoUrl) => {
   }
 };
 
-const sendTelegramPhotoByFile = async (botToken, chatId, filePath, fileName = "attachment.png") => {
+const sendTelegramPhotoByFile = async (botToken, chatId, filePath, fileName = "attachment.png", caption = "") => {
   if (!fs.existsSync(filePath)) {
     throw new Error("Image file does not exist");
   }
@@ -209,6 +210,9 @@ const sendTelegramPhotoByFile = async (botToken, chatId, filePath, fileName = "a
   const formData = new FormData();
   formData.append("chat_id", `${chatId}`);
   formData.append("photo", new Blob([fs.readFileSync(filePath)]), fileName);
+  if (caption) {
+    formData.append("caption", `${caption}`.slice(0, 1024));
+  }
 
   const response = await fetch(buildTelegramApiUrl(botToken, "sendPhoto"), {
     method: "POST",
@@ -607,14 +611,29 @@ const dispatchPendingEventNotifications = async () => {
 
       for (const recipient of recipientsResult.rows) {
         try {
+          const message = formatEventNotificationMessage(
+            event,
+            recipient.timezone,
+            recipient.notification_language,
+            translationsMap
+          );
+
           const imageRefs = extractImageReferencesFromNotes(event.notes || "");
+          let textDeliveredWithPhoto = false;
+
           for (const ref of imageRefs) {
             try {
+              const caption = !textDeliveredWithPhoto ? message : "";
+
               if (ref.kind === "local") {
                 const filePath = path.join(uploadsDir, ref.fileName);
-                await sendTelegramPhotoByFile(botToken, recipient.telegram_chat_id, filePath, ref.fileName);
+                await sendTelegramPhotoByFile(botToken, recipient.telegram_chat_id, filePath, ref.fileName, caption);
               } else if (ref.kind === "url") {
-                await sendTelegramPhotoByUrl(botToken, recipient.telegram_chat_id, ref.url);
+                await sendTelegramPhotoByUrl(botToken, recipient.telegram_chat_id, ref.url, caption);
+              }
+
+              if (!textDeliveredWithPhoto) {
+                textDeliveredWithPhoto = true;
               }
             } catch (photoError) {
               console.error(
@@ -624,13 +643,9 @@ const dispatchPendingEventNotifications = async () => {
             }
           }
 
-          const message = formatEventNotificationMessage(
-            event,
-            recipient.timezone,
-            recipient.notification_language,
-            translationsMap
-          );
-          await sendTelegramMessage(botToken, recipient.telegram_chat_id, message);
+          if (!textDeliveredWithPhoto) {
+            await sendTelegramMessage(botToken, recipient.telegram_chat_id, message);
+          }
         } catch (sendError) {
           console.error(`Telegram event notification failed for event ${event.id}:`, sendError.message);
         }
