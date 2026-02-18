@@ -221,6 +221,36 @@ const extractImageUrlsFromNotes = (notes = "") => {
   return [...urls];
 };
 
+const extractLocalUploadFileNamesFromNotes = (notes = "") => {
+  const fileNames = new Set();
+  const pattern = /\/uploads\/([a-zA-Z0-9._-]+)/g;
+  let match = pattern.exec(notes);
+
+  while (match) {
+    fileNames.add(match[1]);
+    match = pattern.exec(notes);
+  }
+
+  return fileNames;
+};
+
+const deleteImageFiles = (fileNames) => {
+  fileNames.forEach((fileName) => {
+    if (!fileName) {
+      return;
+    }
+
+    try {
+      const targetPath = path.join(uploadsDir, fileName);
+      if (fs.existsSync(targetPath)) {
+        fs.unlinkSync(targetPath);
+      }
+    } catch (error) {
+      console.error(`Failed to remove image file ${fileName}:`, error.message);
+    }
+  });
+};
+
 const normalizeTelegramNotification = (input) => {
   const minutesRaw = Number.parseInt(input?.minutesBefore, 10);
   const minutesBefore = Number.isNaN(minutesRaw) ? 60 : Math.max(1, Math.min(7 * 24 * 60, minutesRaw));
@@ -1030,6 +1060,14 @@ app.put("/events/:id", authMiddleware, async (req, res) => {
 
     const notification = normalizeTelegramNotification(telegramNotification);
 
+    const previousEventResult = await pool.query("SELECT notes FROM events WHERE id = $1", [id]);
+    if (!previousEventResult.rows.length) {
+      return res.status(404).json({ error: "Event not found" });
+    }
+
+    const previousImages = extractLocalUploadFileNamesFromNotes(previousEventResult.rows[0]?.notes || "");
+    const nextImages = extractLocalUploadFileNamesFromNotes(notes || "");
+
     const result = await pool.query(
       `UPDATE events
        SET title = $1,
@@ -1061,6 +1099,9 @@ app.put("/events/:id", authMiddleware, async (req, res) => {
       return res.status(404).json({ error: "Event not found" });
     }
 
+    const removedImages = [...previousImages].filter((name) => !nextImages.has(name));
+    deleteImageFiles(removedImages);
+
     return res.json({ event: sanitizeEvent(result.rows[0]) });
   } catch (error) {
     return res.status(500).json({ error: "Unable to update event" });
@@ -1076,11 +1117,19 @@ app.delete("/events/:id", authMiddleware, async (req, res) => {
       return res.status(403).json({ error: "User is not approved" });
     }
 
+    const previousEventResult = await pool.query("SELECT notes FROM events WHERE id = $1", [id]);
+    if (!previousEventResult.rows.length) {
+      return res.status(404).json({ error: "Event not found" });
+    }
+
     const result = await pool.query("DELETE FROM events WHERE id = $1 RETURNING id", [id]);
 
     if (!result.rows.length) {
       return res.status(404).json({ error: "Event not found" });
     }
+
+    const imagesToDelete = extractLocalUploadFileNamesFromNotes(previousEventResult.rows[0]?.notes || "");
+    deleteImageFiles(imagesToDelete);
 
     return res.status(204).send();
   } catch (error) {
@@ -1112,6 +1161,49 @@ app.post("/events/attachments", authMiddleware, upload.single("image"), async (r
     return res.status(201).json({ url: `${baseUrl}/uploads/${fileName}` });
   } catch (error) {
     return res.status(500).json({ error: "Unable to upload image" });
+  }
+});
+
+app.post("/admin/events/cleanup-old-images", authMiddleware, adminMiddleware, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const pastEventsResult = await client.query(
+      `SELECT id, notes
+       FROM events
+       WHERE end_time IS NOT NULL
+         AND end_time < NOW()`
+    );
+
+    let updatedEventsCount = 0;
+    let deletedImagesCount = 0;
+
+    for (const entry of pastEventsResult.rows) {
+      const notes = entry.notes || "";
+      const images = [...extractLocalUploadFileNamesFromNotes(notes)];
+
+      if (!images.length) {
+        continue;
+      }
+
+      const nextNotes = notes.replace(/!?\[[^\]]*\]\((?:https?:\/\/[^)\s]*\/)?uploads\/[a-zA-Z0-9._-]+\)\s*/g, "").trim();
+
+      await client.query("UPDATE events SET notes = $1 WHERE id = $2", [nextNotes, entry.id]);
+      deleteImageFiles(images);
+
+      updatedEventsCount += 1;
+      deletedImagesCount += images.length;
+    }
+
+    await client.query("COMMIT");
+    return res.json({ updatedEventsCount, deletedImagesCount });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    return res.status(500).json({ error: "Unable to clean up old event images" });
+  } finally {
+    client.release();
   }
 });
 

@@ -95,6 +95,7 @@ const UI_TRANSLATIONS = {
     botName: "Bot name",
     botLink: "Bot link",
     saveTelegramSettings: "Save Telegram settings",
+    cleanupOldEventImages: "Delete old event images",
     userSettings: "User Settings",
     loadingSettings: "Loading settings...",
     telegramNotifications: "Telegram notifications",
@@ -122,6 +123,7 @@ const UI_TRANSLATIONS = {
     message: "Message",
     enterMessageToSend: "Enter message to send",
     send: "Send",
+    cleanupOldEventImagesDone: "Old event images cleaned: {{events}} events, {{images}} images.",
     noFileSelected: "Select an Excel file first",
     timezoneSelection: "Timezone selection",
     dailyNotifications: "Daily Telegram digest",
@@ -204,6 +206,7 @@ const UI_TRANSLATIONS = {
     botName: "Имя бота",
     botLink: "Ссылка бота",
     saveTelegramSettings: "Сохранить настройки Telegram",
+    cleanupOldEventImages: "Удалить старые изображения событий",
     userSettings: "Настройки пользователя",
     loadingSettings: "Загрузка настроек...",
     telegramNotifications: "Telegram-уведомления",
@@ -231,6 +234,7 @@ const UI_TRANSLATIONS = {
     message: "Сообщение",
     enterMessageToSend: "Введите сообщение для отправки",
     send: "Отправить",
+    cleanupOldEventImagesDone: "Старые изображения очищены: событий {{events}}, изображений {{images}}.",
     noFileSelected: "Сначала выберите файл Excel",
     timezoneSelection: "Выбор часового пояса",
     dailyNotifications: "Ежедневная сводка в Telegram",
@@ -519,6 +523,30 @@ function LinkifiedText({ text, emptyText }) {
   );
 }
 
+function NotesAttachmentPreview({ text }) {
+  if (!text) {
+    return null;
+  }
+
+  const lines = text.split("\n");
+  const imagePattern = /^!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)$/;
+  const images = lines
+    .map((line) => line.trim().match(imagePattern)?.[1] || null)
+    .filter(Boolean);
+
+  if (!images.length) {
+    return null;
+  }
+
+  return (
+    <div className="event-description-rich">
+      {images.map((src, index) => (
+        <img key={`${src}-${index}`} src={src} alt="event attachment" style={{ maxWidth: "100%", borderRadius: "8px" }} />
+      ))}
+    </div>
+  );
+}
+
 function App() {
   const [token, setToken] = useState("");
   const [user, setUser] = useState(null);
@@ -685,6 +713,19 @@ function App() {
     return () => window.clearInterval(intervalId);
   }, []);
 
+  const loadEvents = useCallback(async () => {
+    const eventsResponse = await apiFetch(`/events`, {
+      headers: authHeader,
+    });
+    const eventsData = await parseJsonSafe(eventsResponse);
+
+    if (!eventsResponse.ok) {
+      throw new Error(eventsData.error || "Unable to load events.");
+    }
+
+    setEvents(eventsData.events || []);
+  }, [apiFetch, authHeader]);
+
   useEffect(() => {
     const bootstrap = async () => {
       try {
@@ -701,16 +742,7 @@ function App() {
 
         setUser(meData.user);
 
-        const eventsResponse = await apiFetch(`/events`, {
-          headers: authHeader,
-        });
-        const eventsData = await parseJsonSafe(eventsResponse);
-
-        if (!eventsResponse.ok) {
-          throw new Error(eventsData.error || "Unable to load events.");
-        }
-
-        setEvents(eventsData.events || []);
+        await loadEvents();
       } catch (bootError) {
         setUser(null);
         setEvents([]);
@@ -721,7 +753,7 @@ function App() {
     };
 
     bootstrap();
-  }, [apiFetch, authHeader, token]);
+  }, [apiFetch, authHeader, loadEvents, token]);
 
   const loadAdminUsers = async () => {
     if (!user?.isAdmin) {
@@ -981,6 +1013,29 @@ function App() {
       setError("");
     } catch (settingsError) {
       setError(settingsError.message);
+    }
+  };
+
+  const cleanupOldEventImages = async () => {
+    try {
+      const response = await apiFetch(`/admin/events/cleanup-old-images`, {
+        method: "POST",
+        headers: authHeader,
+      });
+      const data = await parseJsonSafe(response);
+
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to cleanup old images");
+      }
+
+      const message = (t("cleanupOldEventImagesDone") || "")
+        .replace("{{events}}", `${data.updatedEventsCount || 0}`)
+        .replace("{{images}}", `${data.deletedImagesCount || 0}`);
+
+      setError(message || "Done");
+      await loadEvents();
+    } catch (cleanupError) {
+      setError(cleanupError.message);
     }
   };
 
@@ -1912,6 +1967,7 @@ function App() {
                       placeholder={t("descriptionPlaceholder")}
                       onPaste={handleNotesPaste}
                     />
+                    <NotesAttachmentPreview text={eventForm.notes} />
                     <input
                       ref={eventAttachmentInputRef}
                       type="file"
@@ -1940,21 +1996,20 @@ function App() {
                             }))
                           }
                         />
+                        <label className="checkbox-wrap telegram-inline-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(eventForm.telegramNotifyAll)}
+                            onChange={(e) =>
+                              setEventForm((current) => ({
+                                ...current,
+                                telegramNotifyAll: e.target.checked,
+                              }))
+                            }
+                          />
+                          {t("notifyAllTelegramUsers")}
+                        </label>
                       </div>
-
-                      <label className="checkbox-wrap">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(eventForm.telegramNotifyAll)}
-                          onChange={(e) =>
-                            setEventForm((current) => ({
-                              ...current,
-                              telegramNotifyAll: e.target.checked,
-                            }))
-                          }
-                        />
-                        {t("notifyAllTelegramUsers")}
-                      </label>
 
                       {!eventForm.telegramNotifyAll && (
                         <div className="telegram-user-pick-list">
@@ -2159,6 +2214,9 @@ function App() {
                 <div className="settings-actions">
                   <button type="button" onClick={saveTelegramAdminSettings}>
                     {t("saveTelegramSettings")}
+                  </button>
+                  <button type="button" className="link-button" onClick={cleanupOldEventImages}>
+                    {t("cleanupOldEventImages")}
                   </button>
                 </div>
               </div>
