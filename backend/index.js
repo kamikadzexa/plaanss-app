@@ -184,7 +184,7 @@ const sendTelegramMessage = async (botToken, chatId, text) => {
   }
 };
 
-const sendTelegramPhoto = async (botToken, chatId, photoUrl) => {
+const sendTelegramPhotoByUrl = async (botToken, chatId, photoUrl) => {
   const response = await fetch(buildTelegramApiUrl(botToken, "sendPhoto"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -197,29 +197,74 @@ const sendTelegramPhoto = async (botToken, chatId, photoUrl) => {
   const data = await response.json().catch(() => null);
 
   if (!response.ok || !data?.ok) {
-    throw new Error(data?.description || "Unable to send Telegram photo");
+    throw new Error(data?.description || "Unable to send Telegram photo by URL");
   }
 };
 
-const extractImageUrlsFromNotes = (notes = "") => {
-  const urls = new Set();
-  const markdownRegex = /!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g;
+const sendTelegramPhotoByFile = async (botToken, chatId, filePath, fileName = "attachment.png") => {
+  if (!fs.existsSync(filePath)) {
+    throw new Error("Image file does not exist");
+  }
+
+  const formData = new FormData();
+  formData.append("chat_id", `${chatId}`);
+  formData.append("photo", new Blob([fs.readFileSync(filePath)]), fileName);
+
+  const response = await fetch(buildTelegramApiUrl(botToken, "sendPhoto"), {
+    method: "POST",
+    body: formData,
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.description || "Unable to send Telegram photo by file");
+  }
+};
+
+const extractImageReferencesFromNotes = (notes = "") => {
+  const refs = [];
+  const seen = new Set();
+  const markdownRegex = /!\[[^\]]*\]\(([^)\s]+)\)/g;
   const directRegex = /(https?:\/\/[^\s]+\.(?:png|jpe?g|gif|webp))/gi;
 
   let markdownMatch = markdownRegex.exec(notes);
   while (markdownMatch) {
-    urls.add(markdownMatch[1]);
+    const rawValue = markdownMatch[1].trim();
+    const key = `md:${rawValue}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+
+      const localMatch = rawValue.match(/(?:https?:\/\/[^)\s]*\/)?uploads\/([a-zA-Z0-9._-]+)/i);
+      if (localMatch) {
+        refs.push({ kind: "local", fileName: localMatch[1], source: rawValue });
+      } else if (/^https?:\/\//i.test(rawValue)) {
+        refs.push({ kind: "url", url: rawValue, source: rawValue });
+      }
+    }
+
     markdownMatch = markdownRegex.exec(notes);
   }
 
   let directMatch = directRegex.exec(notes);
   while (directMatch) {
-    urls.add(directMatch[1]);
+    const url = directMatch[1];
+    const key = `url:${url}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      refs.push({ kind: "url", url, source: url });
+    }
     directMatch = directRegex.exec(notes);
   }
 
-  return [...urls];
+  return refs;
 };
+
+const removeImageMarkdownFromNotes = (notes = "") =>
+  notes
+    .replace(/^\s*!\[[^\]]*\]\(([^)\s]+)\)\s*$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 
 const extractLocalUploadFileNamesFromNotes = (notes = "") => {
   const fileNames = new Set();
@@ -363,7 +408,9 @@ const formatEventNotificationMessage = (event, timezone, language, translationsM
   return applyTemplate(template, {
     title: event.title,
     minutes: `${minutesToStart}`,
-    notes: event.notes || getTranslationValue(translationsMap, "notification.event.noDescription", safeLanguage),
+    notes:
+      removeImageMarkdownFromNotes(event.notes || "") ||
+      getTranslationValue(translationsMap, "notification.event.noDescription", safeLanguage),
     startLabel,
     timezone: safeTimezone,
   });
@@ -560,13 +607,18 @@ const dispatchPendingEventNotifications = async () => {
 
       for (const recipient of recipientsResult.rows) {
         try {
-          const imageUrls = extractImageUrlsFromNotes(event.notes || "");
-          for (const url of imageUrls) {
+          const imageRefs = extractImageReferencesFromNotes(event.notes || "");
+          for (const ref of imageRefs) {
             try {
-              await sendTelegramPhoto(botToken, recipient.telegram_chat_id, url);
+              if (ref.kind === "local") {
+                const filePath = path.join(uploadsDir, ref.fileName);
+                await sendTelegramPhotoByFile(botToken, recipient.telegram_chat_id, filePath, ref.fileName);
+              } else if (ref.kind === "url") {
+                await sendTelegramPhotoByUrl(botToken, recipient.telegram_chat_id, ref.url);
+              }
             } catch (photoError) {
               console.error(
-                `Telegram photo send failed for event ${event.id} (${url}) to chat ${recipient.telegram_chat_id}:`,
+                `Telegram photo send failed for event ${event.id} (${ref.source}) to chat ${recipient.telegram_chat_id}:`,
                 photoError.message
               );
             }
