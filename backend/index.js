@@ -562,7 +562,14 @@ const dispatchPendingEventNotifications = async () => {
         try {
           const imageUrls = extractImageUrlsFromNotes(event.notes || "");
           for (const url of imageUrls) {
-            await sendTelegramPhoto(botToken, recipient.telegram_chat_id, url);
+            try {
+              await sendTelegramPhoto(botToken, recipient.telegram_chat_id, url);
+            } catch (photoError) {
+              console.error(
+                `Telegram photo send failed for event ${event.id} (${url}) to chat ${recipient.telegram_chat_id}:`,
+                photoError.message
+              );
+            }
           }
 
           const message = formatEventNotificationMessage(
