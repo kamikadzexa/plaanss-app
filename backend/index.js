@@ -6,6 +6,8 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 const multer = require("multer");
 const XLSX = require("xlsx");
 
@@ -36,9 +38,22 @@ const DEFAULT_TRANSLATIONS = {
     en: "Connection successful ✅ Telegram notifications are enabled.",
     ru: "Подключение успешно ✅ Уведомления Telegram включены.",
   },
+  "notification.daily.title": {
+    en: "🗓️ Events from 10:00 today to 10:00 tomorrow",
+    ru: "🗓️ События с 10:00 сегодня до 10:00 завтра",
+  },
+  "notification.daily.item": {
+    en: "{{time}} — {{title}}",
+    ru: "{{time}} — {{title}}",
+  },
 };
 
 const allowedOrigin = process.env.CORS_ORIGIN || true;
+const uploadsDir = path.join(__dirname, "uploads");
+
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
 app.use(
   cors({
@@ -49,6 +64,7 @@ app.use(
 app.use(cookieParser());
 app.use(express.json());
 const upload = multer({ storage: multer.memoryStorage() });
+app.use("/uploads", express.static(uploadsDir));
 
 const issueToken = (user) => jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
 
@@ -119,6 +135,7 @@ const sanitizeUser = (row) => ({
   timezone: row.timezone || "UTC",
   createdAt: row.created_at,
   telegramStatus: row.telegram_chat_id ? "connected" : "not_connected",
+  dailyNotificationsEnabled: Boolean(row.daily_notifications_enabled),
 });
 
 const sanitizeTelegramSettings = (row) => ({
@@ -165,6 +182,43 @@ const sendTelegramMessage = async (botToken, chatId, text) => {
   if (!response.ok || !data?.ok) {
     throw new Error(data?.description || "Unable to send Telegram message");
   }
+};
+
+const sendTelegramPhoto = async (botToken, chatId, photoUrl) => {
+  const response = await fetch(buildTelegramApiUrl(botToken, "sendPhoto"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      photo: photoUrl,
+    }),
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.description || "Unable to send Telegram photo");
+  }
+};
+
+const extractImageUrlsFromNotes = (notes = "") => {
+  const urls = new Set();
+  const markdownRegex = /!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g;
+  const directRegex = /(https?:\/\/[^\s]+\.(?:png|jpe?g|gif|webp))/gi;
+
+  let markdownMatch = markdownRegex.exec(notes);
+  while (markdownMatch) {
+    urls.add(markdownMatch[1]);
+    markdownMatch = markdownRegex.exec(notes);
+  }
+
+  let directMatch = directRegex.exec(notes);
+  while (directMatch) {
+    urls.add(directMatch[1]);
+    directMatch = directRegex.exec(notes);
+  }
+
+  return [...urls];
 };
 
 const normalizeTelegramNotification = (input) => {
@@ -285,6 +339,138 @@ const formatEventNotificationMessage = (event, timezone, language, translationsM
   });
 };
 
+const formatDailyNotificationMessage = (events, timezone, language, translationsMap) => {
+  const safeTimezone = normalizeTimezone(timezone);
+  const safeLanguage = normalizeLanguage(language);
+  const locale = safeLanguage === "ru" ? "ru-RU" : "en-GB";
+  const heading =
+    getTranslationValue(translationsMap, "notification.daily.title", safeLanguage) ||
+    DEFAULT_TRANSLATIONS["notification.daily.title"].en;
+  const itemTemplate =
+    getTranslationValue(translationsMap, "notification.daily.item", safeLanguage) ||
+    DEFAULT_TRANSLATIONS["notification.daily.item"].en;
+
+  const timeFormatter = new Intl.DateTimeFormat(locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: safeTimezone,
+  });
+
+  const lines = events.map((event) =>
+    applyTemplate(itemTemplate, {
+      time: timeFormatter.format(new Date(event.start_time)),
+      title: event.title,
+    })
+  );
+
+  return `${heading}\n${lines.join("\n")}`;
+};
+
+const resolveTimezoneOffsetMs = (date, timezone) => {
+  const timezoneDate = new Date(date.toLocaleString("en-US", { timeZone: timezone }));
+  return timezoneDate.getTime() - date.getTime();
+};
+
+const getPeriodStartForTimezone = (currentDate, timezone) => {
+  const localNow = new Date(currentDate.toLocaleString("en-US", { timeZone: timezone }));
+  const localStart = new Date(localNow);
+  localStart.setHours(10, 0, 0, 0);
+
+  if (localNow < localStart) {
+    localStart.setDate(localStart.getDate() - 1);
+  }
+
+  const offset = resolveTimezoneOffsetMs(currentDate, timezone);
+  return new Date(localStart.getTime() - offset);
+};
+
+const shouldSendDailyNow = (currentDate, timezone) => {
+  const localNow = new Date(currentDate.toLocaleString("en-US", { timeZone: timezone }));
+  return localNow.getHours() === 10 && localNow.getMinutes() === 0;
+};
+
+const dispatchDailyAgendaNotifications = async () => {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const settingsResult = await client.query("SELECT bot_token FROM telegram_settings WHERE id = 1");
+    const botToken = settingsResult.rows[0]?.bot_token;
+
+    if (!botToken) {
+      await client.query("COMMIT");
+      return;
+    }
+
+    const usersResult = await client.query(
+      `SELECT id, telegram_chat_id, timezone, notification_language, daily_notifications_last_period_start
+       FROM users
+       WHERE is_approved = TRUE
+         AND telegram_chat_id IS NOT NULL
+         AND daily_notifications_enabled = TRUE`
+    );
+
+    const translationsMap = await getTranslationsMap(client);
+    const now = new Date();
+
+    for (const recipient of usersResult.rows) {
+      const timezone = normalizeTimezone(recipient.timezone);
+      if (!shouldSendDailyNow(now, timezone)) {
+        continue;
+      }
+
+      const periodStart = getPeriodStartForTimezone(now, timezone);
+      const previousPeriodStart = recipient.daily_notifications_last_period_start
+        ? new Date(recipient.daily_notifications_last_period_start)
+        : null;
+
+      if (previousPeriodStart && previousPeriodStart.toISOString() === periodStart.toISOString()) {
+        continue;
+      }
+
+      const periodEnd = new Date(periodStart.getTime() + 24 * 60 * 60 * 1000);
+      const eventsResult = await client.query(
+        `SELECT title, start_time
+         FROM events
+         WHERE start_time >= $1
+           AND start_time < $2
+         ORDER BY start_time ASC`,
+        [periodStart.toISOString(), periodEnd.toISOString()]
+      );
+
+      await client.query("UPDATE users SET daily_notifications_last_period_start = $1 WHERE id = $2", [
+        periodStart.toISOString(),
+        recipient.id,
+      ]);
+
+      if (!eventsResult.rows.length) {
+        continue;
+      }
+
+      try {
+        const message = formatDailyNotificationMessage(
+          eventsResult.rows,
+          timezone,
+          recipient.notification_language,
+          translationsMap
+        );
+        await sendTelegramMessage(botToken, recipient.telegram_chat_id, message);
+      } catch (sendError) {
+        console.error(`Telegram daily notification failed for user ${recipient.id}:`, sendError.message);
+      }
+    }
+
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Failed to dispatch daily notifications:", error.message);
+  } finally {
+    client.release();
+  }
+};
+
 const dispatchPendingEventNotifications = async () => {
   const client = await pool.connect();
 
@@ -344,6 +530,11 @@ const dispatchPendingEventNotifications = async () => {
 
       for (const recipient of recipientsResult.rows) {
         try {
+          const imageUrls = extractImageUrlsFromNotes(event.notes || "");
+          for (const url of imageUrls) {
+            await sendTelegramPhoto(botToken, recipient.telegram_chat_id, url);
+          }
+
           const message = formatEventNotificationMessage(
             event,
             recipient.timezone,
@@ -384,6 +575,8 @@ const initDb = async () => {
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_subscription_token TEXT");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone TEXT DEFAULT 'UTC'");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_language TEXT DEFAULT 'en'");
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_notifications_enabled BOOLEAN DEFAULT FALSE");
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_notifications_last_period_start TIMESTAMPTZ");
   await pool.query("UPDATE users SET notification_language = 'en' WHERE notification_language IS NULL OR notification_language = ''");
   await pool.query("UPDATE users SET timezone = 'UTC' WHERE timezone IS NULL OR timezone = ''");
 
@@ -658,7 +851,7 @@ app.get("/auth/me", authMiddleware, async (req, res) => {
   await updateUserNotificationLanguage(req.user.id, requestedLanguage);
 
   const result = await pool.query(
-    "SELECT id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone FROM users WHERE id = $1",
+    "SELECT id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone, daily_notifications_enabled FROM users WHERE id = $1",
     [req.user.id]
   );
   const user = result.rows[0];
@@ -686,7 +879,7 @@ app.post("/auth/logout", (req, res) => {
 app.get("/admin/users", authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone FROM users ORDER BY created_at ASC"
+      "SELECT id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone, daily_notifications_enabled FROM users ORDER BY created_at ASC"
     );
     return res.json({ users: result.rows.map(sanitizeUser) });
   } catch (error) {
@@ -732,7 +925,7 @@ app.put("/admin/users/:id", authMiddleware, adminMiddleware, async (req, res) =>
              password_hash = $4,
              timezone = $5
          WHERE id = $6
-         RETURNING id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone`,
+         RETURNING id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone, daily_notifications_enabled`,
         [normalizedEmail, Boolean(isAdmin), Boolean(isApproved), passwordHash, normalizedTimezone, id]
       );
       return res.json({ user: sanitizeUser(result.rows[0]) });
@@ -745,7 +938,7 @@ app.put("/admin/users/:id", authMiddleware, adminMiddleware, async (req, res) =>
            is_approved = $3,
            timezone = $4
        WHERE id = $5
-       RETURNING id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone`,
+       RETURNING id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone, daily_notifications_enabled`,
       [normalizedEmail, Boolean(isAdmin), Boolean(isApproved), normalizedTimezone, id]
     );
 
@@ -895,6 +1088,33 @@ app.delete("/events/:id", authMiddleware, async (req, res) => {
   }
 });
 
+app.post("/events/attachments", authMiddleware, upload.single("image"), async (req, res) => {
+  if (!req.file?.buffer) {
+    return res.status(400).json({ error: "Image file is required" });
+  }
+
+  if (!req.file.mimetype?.startsWith("image/")) {
+    return res.status(400).json({ error: "Only image files are allowed" });
+  }
+
+  try {
+    const userResult = await pool.query("SELECT is_approved FROM users WHERE id = $1", [req.user.id]);
+    if (!userResult.rows.length || !userResult.rows[0].is_approved) {
+      return res.status(403).json({ error: "User is not approved" });
+    }
+
+    const extension = (req.file.mimetype.split("/")[1] || "png").replace(/[^a-z0-9]/gi, "") || "png";
+    const fileName = `${Date.now()}-${crypto.randomUUID()}.${extension}`;
+    const filePath = path.join(uploadsDir, fileName);
+    fs.writeFileSync(filePath, req.file.buffer);
+
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    return res.status(201).json({ url: `${baseUrl}/uploads/${fileName}` });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to upload image" });
+  }
+});
+
 app.get("/admin/telegram-settings", authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const result = await pool.query("SELECT bot_token, bot_name, bot_link FROM telegram_settings WHERE id = 1");
@@ -1035,7 +1255,7 @@ app.put("/user/timezone", authMiddleware, async (req, res) => {
 
   try {
     const result = await pool.query(
-      "UPDATE users SET timezone = $1 WHERE id = $2 RETURNING id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone",
+      "UPDATE users SET timezone = $1 WHERE id = $2 RETURNING id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone, daily_notifications_enabled",
       [normalizedTimezone, req.user.id]
     );
 
@@ -1053,7 +1273,7 @@ app.get("/user/telegram", authMiddleware, async (req, res) => {
   try {
     const [settingsResult, userResult] = await Promise.all([
       pool.query("SELECT bot_name, bot_link, bot_token FROM telegram_settings WHERE id = 1"),
-      pool.query("SELECT telegram_chat_id, telegram_subscription_token FROM users WHERE id = $1", [req.user.id]),
+      pool.query("SELECT telegram_chat_id, telegram_subscription_token, daily_notifications_enabled FROM users WHERE id = $1", [req.user.id]),
     ]);
 
     const settings = settingsResult.rows[0];
@@ -1072,9 +1292,29 @@ app.get("/user/telegram", authMiddleware, async (req, res) => {
       hasBotToken: Boolean(settings?.bot_token),
       status: userData?.telegram_chat_id ? "Connected" : "Not connected",
       generatedId,
+      dailyNotificationsEnabled: Boolean(userData?.daily_notifications_enabled),
     });
   } catch (error) {
     return res.status(500).json({ error: "Unable to load Telegram settings" });
+  }
+});
+
+app.put("/user/daily-notifications", authMiddleware, async (req, res) => {
+  const enabled = Boolean(req.body?.enabled);
+
+  try {
+    const result = await pool.query(
+      "UPDATE users SET daily_notifications_enabled = $1, daily_notifications_last_period_start = NULL WHERE id = $2 RETURNING daily_notifications_enabled",
+      [enabled, req.user.id]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    return res.json({ enabled: Boolean(result.rows[0].daily_notifications_enabled) });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to update daily notifications setting" });
   }
 });
 
@@ -1154,9 +1394,11 @@ initDb()
   .then(() => {
     setInterval(() => {
       dispatchPendingEventNotifications();
+      dispatchDailyAgendaNotifications();
     }, 60 * 1000);
 
     dispatchPendingEventNotifications();
+    dispatchDailyAgendaNotifications();
 
     app.listen(PORT, () => {
       console.log(`Backend running on ${PORT}`);

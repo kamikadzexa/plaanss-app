@@ -58,6 +58,8 @@ const UI_TRANSLATIONS = {
     lengthMinutes: "Length (minutes)",
     description: "Description",
     descriptionPlaceholder: "Add multiple lines and links like:\nhttps://example.com",
+    addAttachment: "Add attachment",
+    imageUploadFailed: "Unable to upload image.",
     telegramNotification: "Telegram notification",
     minutesBeforeEvent: "Minutes before event",
     notifyAllTelegramUsers: "Notify all connected Telegram users",
@@ -122,6 +124,8 @@ const UI_TRANSLATIONS = {
     send: "Send",
     noFileSelected: "Select an Excel file first",
     timezoneSelection: "Timezone selection",
+    dailyNotifications: "Daily Telegram digest",
+    dailyNotificationsHelp: "Send today's events at 10:00 in your timezone (from 10:00 today to 10:00 tomorrow).",
   },
   ru: {
     month: "Месяц",
@@ -163,6 +167,8 @@ const UI_TRANSLATIONS = {
     lengthMinutes: "Длительность (минуты)",
     description: "Описание",
     descriptionPlaceholder: "Добавьте несколько строк и ссылки, например:\nhttps://example.com",
+    addAttachment: "Добавить вложение",
+    imageUploadFailed: "Не удалось загрузить изображение.",
     telegramNotification: "Telegram-уведомление",
     minutesBeforeEvent: "Минут до события",
     notifyAllTelegramUsers: "Уведомить всех подключённых пользователей Telegram",
@@ -227,6 +233,8 @@ const UI_TRANSLATIONS = {
     send: "Отправить",
     noFileSelected: "Сначала выберите файл Excel",
     timezoneSelection: "Выбор часового пояса",
+    dailyNotifications: "Ежедневная сводка в Telegram",
+    dailyNotificationsHelp: "Отправлять события дня в 10:00 вашего часового пояса (с 10:00 сегодня до 10:00 завтра).",
   },
 };
 
@@ -255,6 +263,7 @@ const blankTelegramInfo = {
   hasBotToken: false,
   status: "Not connected",
   generatedId: "",
+  dailyNotificationsEnabled: false,
 };
 const blankTelegramAdmin = { botToken: "", botName: "", botLink: "", hasBotToken: false };
 const blankAdminTelegramMessage = { userId: "", userEmail: "", message: "" };
@@ -477,10 +486,17 @@ function LinkifiedText({ text, emptyText }) {
 
   const lines = text.split("\n");
   const urlPattern = /(https?:\/\/[^\s]+)/g;
+  const imagePattern = /^!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)$/;
 
   return (
     <div className="event-description-rich">
       {lines.map((line, lineIndex) => {
+        const imageMatch = line.trim().match(imagePattern);
+
+        if (imageMatch) {
+          return <img key={`${line}-${lineIndex}`} src={imageMatch[1]} alt="event attachment" style={{ maxWidth: "100%", borderRadius: "8px" }} />;
+        }
+
         const chunks = line.split(urlPattern);
 
         return (
@@ -530,6 +546,7 @@ function App() {
   const [calendarRangeStart, setCalendarRangeStart] = useState(null);
   const [language, setLanguage] = useState(detectBrowserLanguage);
   const translationsImportInputRef = useRef(null);
+  const eventAttachmentInputRef = useRef(null);
 
   const [eventDialogMode, setEventDialogMode] = useState(null);
   const [eventForm, setEventForm] = useState(blankEventForm);
@@ -773,6 +790,7 @@ function App() {
       hasBotToken: Boolean(data.hasBotToken),
       status: data.status || "Not connected",
       generatedId: data.generatedId || "",
+      dailyNotificationsEnabled: Boolean(data.dailyNotificationsEnabled),
     });
   };
 
@@ -1009,6 +1027,94 @@ function App() {
       setError("");
     } catch (tgError) {
       setError(tgError.message);
+    }
+  };
+
+  const uploadEventImage = async (file) => {
+    if (!file) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("image", file);
+
+    const response = await fetch(`${API_BASE}/events/attachments`, {
+      method: "POST",
+      credentials: "include",
+      headers: token ? { Authorization: `Bearer ${token}`, "X-UI-Language": language } : { "X-UI-Language": language },
+      body: formData,
+    });
+    const data = await parseJsonSafe(response);
+
+    if (!response.ok || !data.url) {
+      throw new Error(data.error || t("imageUploadFailed"));
+    }
+
+    const markdown = `
+![image](${data.url})
+`;
+    setEventForm((current) => ({
+      ...current,
+      notes: `${current.notes || ""}${markdown}`.replace(/^\n/, ""),
+    }));
+  };
+
+  const handleAttachmentInputChange = async (event) => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      await uploadEventImage(file);
+      setError("");
+    } catch (uploadError) {
+      setError(uploadError.message || t("imageUploadFailed"));
+    }
+  };
+
+  const handleNotesPaste = async (event) => {
+    const files = Array.from(event.clipboardData?.files || []).filter((item) => item.type?.startsWith("image/"));
+    if (!files.length) {
+      return;
+    }
+
+    event.preventDefault();
+
+    for (const file of files) {
+      try {
+        await uploadEventImage(file);
+      } catch (uploadError) {
+        setError(uploadError.message || t("imageUploadFailed"));
+        return;
+      }
+    }
+
+    setError("");
+  };
+
+  const saveDailyNotificationsEnabled = async (enabled) => {
+    try {
+      const response = await apiFetch(`/user/daily-notifications`, {
+        method: "PUT",
+        headers: authHeader,
+        body: JSON.stringify({ enabled }),
+      });
+      const data = await parseJsonSafe(response);
+
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to update daily notifications");
+      }
+
+      setTelegramUser((current) => ({
+        ...current,
+        dailyNotificationsEnabled: Boolean(data.enabled),
+      }));
+      setError("");
+    } catch (dailyError) {
+      setError(dailyError.message);
     }
   };
 
@@ -1803,8 +1909,19 @@ function App() {
                           notes: e.target.value,
                         }))
                       }
-                      placeholder={"Add multiple lines and links like:\nhttps://example.com"}
+                      placeholder={t("descriptionPlaceholder")}
+                      onPaste={handleNotesPaste}
                     />
+                    <input
+                      ref={eventAttachmentInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAttachmentInputChange}
+                      style={{ display: "none" }}
+                    />
+                    <button type="button" className="link-button" onClick={() => eventAttachmentInputRef.current?.click()}>
+                      {t("addAttachment")}
+                    </button>
 
                     <label htmlFor="event-telegram-minutes">{t("telegramNotification")}</label>
                     <div className="telegram-event-settings">
@@ -2084,6 +2201,15 @@ function App() {
                     </button>
                   </li>
                 </ol>
+                <label className="checkbox-wrap">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(telegramUser.dailyNotificationsEnabled)}
+                    onChange={(e) => saveDailyNotificationsEnabled(e.target.checked)}
+                  />
+                  {t("dailyNotifications")}
+                </label>
+                <p>{t("dailyNotificationsHelp")}</p>
                 <p>
                   {t("status")}: <strong>{telegramUser.status}</strong>
                 </p>
