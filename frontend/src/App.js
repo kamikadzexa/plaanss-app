@@ -33,8 +33,95 @@ const UI_TRANSLATIONS = {
     translationManagement: "Translation management",
     exportTranslations: "Export Excel",
     importTranslations: "Import Excel",
-    saveImportedTranslations: "Import file",
     selectLanguage: "Language",
+    signInTitle: "Sign in to your calendar",
+    createAccountTitle: "Create a new account",
+    needAccount: "Need an account?",
+    haveAccount: "Already have an account?",
+    welcome: "Welcome",
+    pageDescCalendar: "Click + to create an event. Click event name to view details and edit.",
+    pageDescAdmin: "Manage users, translations, and Telegram bot configuration.",
+    pageDescSettings: "Manage your Telegram subscription, timezone, and password.",
+    prev: "Prev",
+    today: "Today",
+    next: "Next",
+    noEvents: "No events",
+    untitledEvent: "Untitled event",
+    createEvent: "Create event",
+    editEvent: "Edit event",
+    eventName: "Name",
+    eventNamePlaceholder: "Event name",
+    startDate: "Start date",
+    startTime: "Start time",
+    timezone: "Timezone",
+    myTimezone: "My timezone",
+    lengthMinutes: "Length (minutes)",
+    description: "Description",
+    descriptionPlaceholder: "Add multiple lines and links like:\nhttps://example.com",
+    telegramNotification: "Telegram notification",
+    minutesBeforeEvent: "Minutes before event",
+    notifyAllTelegramUsers: "Notify all connected Telegram users",
+    selectSpecificTelegramUsers: "Select specific users with Telegram bot connected:",
+    noConnectedTelegramUsers: "No connected Telegram users available.",
+    create: "Create",
+    save: "Save",
+    delete: "Delete",
+    cancel: "Cancel",
+    starts: "Starts",
+    ends: "Ends",
+    edit: "Edit",
+    close: "Close",
+    loading: "Loading...",
+    userManagement: "User Management",
+    email: "Email",
+    password: "Password",
+    passwordNew: "Password (new)",
+    approved: "Approved",
+    admin: "Admin",
+    telegram: "Telegram",
+    actions: "Actions",
+    leaveBlankToKeep: "Leave blank to keep",
+    connected: "Connected",
+    notConnected: "Not connected",
+    searchTimezone: "Search timezone",
+    useSystem: "Use system",
+    sendTelegram: "Send Telegram",
+    telegramBotSettings: "Telegram bot settings",
+    botKey: "Bot key",
+    savedEnterReplace: "Saved (enter to replace)",
+    enterBotToken: "Enter bot token",
+    botName: "Bot name",
+    botLink: "Bot link",
+    saveTelegramSettings: "Save Telegram settings",
+    userSettings: "User Settings",
+    loadingSettings: "Loading settings...",
+    telegramNotifications: "Telegram notifications",
+    connectTelegramInstruction: "Connect your Telegram chat to receive notifications.",
+    openBot: "Open the bot",
+    botLinkNotConfigured: "Bot link not configured by admin yet.",
+    sendStart: "Send",
+    inChat: "in the chat.",
+    copyMessage: "Copy message",
+    afterSendingMessage: "After sending message from step 2",
+    verifyConnection: "Verify connection",
+    status: "Status",
+    regenerateSubscriptionId: "Regenerate subscription id",
+    generateSubscriptionId: "Generate subscription id",
+    timeZone: "Time zone",
+    ianaTimezone: "IANA Timezone",
+    useCurrentSystemTimezone: "Use current system timezone",
+    saveTimezone: "Save timezone",
+    changePassword: "Change password",
+    currentPassword: "Current password",
+    newPassword: "New password",
+    changePasswordBtn: "Change password",
+    sendTelegramNotification: "Send Telegram notification",
+    user: "User",
+    message: "Message",
+    enterMessageToSend: "Enter message to send",
+    send: "Send",
+    noFileSelected: "Select an Excel file first",
+    timezoneSelection: "Timezone selection",
   },
   ru: {
     month: "Месяц",
@@ -51,10 +138,98 @@ const UI_TRANSLATIONS = {
     translationManagement: "Управление переводами",
     exportTranslations: "Экспорт Excel",
     importTranslations: "Импорт Excel",
-    saveImportedTranslations: "Импортировать файл",
     selectLanguage: "Язык",
+    signInTitle: "Войдите в календарь",
+    createAccountTitle: "Создайте новый аккаунт",
+    needAccount: "Нет аккаунта?",
+    haveAccount: "Уже есть аккаунт?",
+    welcome: "Добро пожаловать",
+    pageDescCalendar: "Нажмите + чтобы создать событие. Нажмите на событие, чтобы просмотреть и изменить.",
+    pageDescAdmin: "Управляйте пользователями, переводами и настройками Telegram-бота.",
+    pageDescSettings: "Управляйте подпиской Telegram, часовым поясом и паролем.",
+    prev: "Назад",
+    today: "Сегодня",
+    next: "Вперёд",
+    noEvents: "Нет событий",
+    untitledEvent: "Без названия",
+    createEvent: "Создать событие",
+    editEvent: "Изменить событие",
+    eventName: "Название",
+    eventNamePlaceholder: "Название события",
+    startDate: "Дата начала",
+    startTime: "Время начала",
+    timezone: "Часовой пояс",
+    myTimezone: "Мой часовой пояс",
+    lengthMinutes: "Длительность (минуты)",
+    description: "Описание",
+    descriptionPlaceholder: "Добавьте несколько строк и ссылки, например:\nhttps://example.com",
+    telegramNotification: "Telegram-уведомление",
+    minutesBeforeEvent: "Минут до события",
+    notifyAllTelegramUsers: "Уведомить всех подключённых пользователей Telegram",
+    selectSpecificTelegramUsers: "Выберите конкретных пользователей с подключённым Telegram-ботом:",
+    noConnectedTelegramUsers: "Нет подключённых пользователей Telegram.",
+    create: "Создать",
+    save: "Сохранить",
+    delete: "Удалить",
+    cancel: "Отмена",
+    starts: "Начало",
+    ends: "Окончание",
+    edit: "Изменить",
+    close: "Закрыть",
+    loading: "Загрузка...",
+    userManagement: "Управление пользователями",
+    email: "Email",
+    password: "Пароль",
+    passwordNew: "Пароль (новый)",
+    approved: "Одобрен",
+    admin: "Админ",
+    telegram: "Telegram",
+    actions: "Действия",
+    leaveBlankToKeep: "Оставьте пустым, чтобы не менять",
+    connected: "Подключён",
+    notConnected: "Не подключён",
+    searchTimezone: "Найти часовой пояс",
+    useSystem: "Системный",
+    sendTelegram: "Отправить в Telegram",
+    telegramBotSettings: "Настройки Telegram-бота",
+    botKey: "Ключ бота",
+    savedEnterReplace: "Сохранено (введите для замены)",
+    enterBotToken: "Введите токен бота",
+    botName: "Имя бота",
+    botLink: "Ссылка бота",
+    saveTelegramSettings: "Сохранить настройки Telegram",
+    userSettings: "Настройки пользователя",
+    loadingSettings: "Загрузка настроек...",
+    telegramNotifications: "Telegram-уведомления",
+    connectTelegramInstruction: "Подключите ваш Telegram-чат, чтобы получать уведомления.",
+    openBot: "Откройте бота",
+    botLinkNotConfigured: "Ссылка бота ещё не настроена админом.",
+    sendStart: "Отправьте",
+    inChat: "в чат.",
+    copyMessage: "Скопировать сообщение",
+    afterSendingMessage: "После отправки сообщения из шага 2",
+    verifyConnection: "Проверить подключение",
+    status: "Статус",
+    regenerateSubscriptionId: "Пересоздать ID подписки",
+    generateSubscriptionId: "Создать ID подписки",
+    timeZone: "Часовой пояс",
+    ianaTimezone: "Часовой пояс IANA",
+    useCurrentSystemTimezone: "Использовать текущий системный часовой пояс",
+    saveTimezone: "Сохранить часовой пояс",
+    changePassword: "Сменить пароль",
+    currentPassword: "Текущий пароль",
+    newPassword: "Новый пароль",
+    changePasswordBtn: "Сменить пароль",
+    sendTelegramNotification: "Отправить уведомление в Telegram",
+    user: "Пользователь",
+    message: "Сообщение",
+    enterMessageToSend: "Введите сообщение для отправки",
+    send: "Отправить",
+    noFileSelected: "Сначала выберите файл Excel",
+    timezoneSelection: "Выбор часового пояса",
   },
 };
+
 
 const API_BASE =
   process.env.REACT_APP_API_URL ||
@@ -354,8 +529,7 @@ function App() {
   const [nowTick, setNowTick] = useState(Date.now());
   const [calendarRangeStart, setCalendarRangeStart] = useState(null);
   const [language, setLanguage] = useState(detectBrowserLanguage);
-  const [translationsRows, setTranslationsRows] = useState([]);
-  const [translationsImportFile, setTranslationsImportFile] = useState(null);
+  const translationsImportInputRef = useRef(null);
 
   const [eventDialogMode, setEventDialogMode] = useState(null);
   const [eventForm, setEventForm] = useState(blankEventForm);
@@ -625,7 +799,6 @@ function App() {
       throw new Error(data.error || "Unable to load translations");
     }
 
-    setTranslationsRows(data.items || []);
   };
 
   const exportTranslationsFile = async () => {
@@ -650,20 +823,15 @@ function App() {
     }
   };
 
-  const importTranslationsFile = (event) => {
-    const file = event.target.files?.[0] || null;
-    setTranslationsImportFile(file);
-  };
-
-  const saveImportedTranslations = async () => {
-    if (!translationsImportFile) {
-      setError("Select an Excel file first");
+  const uploadTranslationsFile = async (file) => {
+    if (!file) {
+      setError(t("noFileSelected"));
       return;
     }
 
     try {
       const formData = new FormData();
-      formData.append("file", translationsImportFile);
+      formData.append("file", file);
 
       const response = await apiFetch(`/admin/translations/import`, {
         method: "POST",
@@ -677,11 +845,20 @@ function App() {
       }
 
       await loadTranslations();
-      setTranslationsImportFile(null);
       setError("");
     } catch (importError) {
       setError(importError.message);
     }
+  };
+
+  const openTranslationsImportPicker = () => {
+    translationsImportInputRef.current?.click();
+  };
+
+  const importTranslationsFile = async (event) => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = "";
+    await uploadTranslationsFile(file);
   };
 
   const goToAdminPage = async () => {
@@ -1267,8 +1444,8 @@ function App() {
       <div className="auth-shell">
         <form className="auth-card" onSubmit={handleAuthSubmit}>
           <h1>Plaanss Calendar</h1>
-          <p>{authMode === "login" ? "Sign in to your calendar" : "Create a new account"}</p>
-          <label htmlFor="email">Email</label>
+          <p>{authMode === "login" ? t("signInTitle") : t("createAccountTitle")}</p>
+          <label htmlFor="email">{t("email")}</label>
           <input
             id="email"
             type="email"
@@ -1277,7 +1454,7 @@ function App() {
             required
           />
 
-          <label htmlFor="password">Password</label>
+          <label htmlFor="password">{t("password")}</label>
           <input
             id="password"
             type="password"
@@ -1307,7 +1484,7 @@ function App() {
               setAuthMode((mode) => (mode === "login" ? "register" : "login"));
             }}
           >
-            {authMode === "login" ? "Need an account? " + t("register") : "Already have an account? " + t("login")}
+            {authMode === "login" ? `${t("needAccount")} ${t("register")}` : `${t("haveAccount")} ${t("login")}`}
           </button>
         </form>
       </div>
@@ -1318,13 +1495,13 @@ function App() {
     <main className="calendar-shell">
       <header className="calendar-header">
         <div>
-          <h2>Welcome, {user.email}</h2>
+          <h2>{t("welcome")}, {user.email}</h2>
           <p>
             {activePage === "calendar"
-              ? "Click + to create an event. Click event name to view details and edit."
+              ? t("pageDescCalendar")
               : activePage === "admin"
-              ? "Manage users and Telegram bot configuration."
-              : "Manage your Telegram subscription and password."}
+              ? t("pageDescAdmin")
+              : t("pageDescSettings")}
           </p>
         </div>
         <div className="header-actions">
@@ -1387,13 +1564,13 @@ function App() {
             <section className="mobile-week-view" aria-label="Week view">
               <header className="mobile-week-controls">
                 <button type="button" onClick={goToPreviousMobileWeek}>
-                  prev
+                  {t("prev")}
                 </button>
                 <button type="button" onClick={goToCurrentMobileWeek}>
-                  today
+                  {t("today")}
                 </button>
                 <button type="button" onClick={goToNextMobileWeek}>
-                  next
+                  {t("next")}
                 </button>
               </header>
 
@@ -1409,7 +1586,7 @@ function App() {
 
                     <div className="mobile-week-events-list">
                       {day.events.length === 0 ? (
-                        <p className="mobile-week-empty">No events</p>
+                        <p className="mobile-week-empty">{t("noEvents")}</p>
                       ) : (
                         day.events.map((event) => {
                           const statusClass = getEventStatus(event.start, event.end, new Date(nowTick));
@@ -1425,7 +1602,7 @@ function App() {
                                 <span className="mobile-week-event-dot" aria-hidden="true" />
                                 {formatEventTimeRange(event.start, event.end, language, t("timeUnavailable"))}
                               </span>
-                              <span className="mobile-week-event-name">{event.title || "Untitled event"}</span>
+                              <span className="mobile-week-event-name">{event.title || t("untitledEvent")}</span>
                             </button>
                           );
                         })
@@ -1522,10 +1699,10 @@ function App() {
           <section className="modal-card" role="dialog" aria-modal="true">
             {(eventDialogMode === "create" || eventDialogMode === "edit") && (
               <>
-                <h3>{eventDialogMode === "create" ? "Create event" : "Edit event"}</h3>
+                <h3>{eventDialogMode === "create" ? t("createEvent") : t("editEvent")}</h3>
                 <form className="event-form" onSubmit={handleEventFormSubmit}>
                   <div className="event-form-grid">
-                    <label htmlFor="event-title">Name</label>
+                    <label htmlFor="event-title">{t("eventName")}</label>
                     <input
                       id="event-title"
                       value={eventForm.title}
@@ -1535,11 +1712,11 @@ function App() {
                           title: e.target.value,
                         }))
                       }
-                      placeholder="Event name"
+                      placeholder={t("eventNamePlaceholder")}
                       required
                     />
 
-                    <label htmlFor="event-start-date">Start date</label>
+                    <label htmlFor="event-start-date">{t("startDate")}</label>
                     <input
                       id="event-start-date"
                       type="date"
@@ -1553,7 +1730,7 @@ function App() {
                       required
                     />
 
-                    <label htmlFor="event-start-time">Start time</label>
+                    <label htmlFor="event-start-time">{t("startTime")}</label>
                     <input
                       id="event-start-time"
                       type="time"
@@ -1567,10 +1744,10 @@ function App() {
                       required
                     />
 
-                    <label>Timezone</label>
-                    <div className="timezone-switch" role="group" aria-label="Timezone selection">
+                    <label>{t("timezone")}</label>
+                    <div className="timezone-switch" role="group" aria-label={t("timezoneSelection")}>
                       {[
-                        { key: "user", label: "My timezone" },
+                        { key: "user", label: t("myTimezone") },
                         { key: "msk", label: "MSK (GMT+3)" },
                       ].map((option) => (
                         <button
@@ -1599,7 +1776,7 @@ function App() {
                       ))}
                     </div>
 
-                    <label htmlFor="event-duration">Length (minutes)</label>
+                    <label htmlFor="event-duration">{t("lengthMinutes")}</label>
                     <input
                       id="event-duration"
                       type="number"
@@ -1615,7 +1792,7 @@ function App() {
                       required
                     />
 
-                    <label htmlFor="event-notes">Description</label>
+                    <label htmlFor="event-notes">{t("description")}</label>
                     <textarea
                       id="event-notes"
                       rows={6}
@@ -1629,10 +1806,10 @@ function App() {
                       placeholder={"Add multiple lines and links like:\nhttps://example.com"}
                     />
 
-                    <label htmlFor="event-telegram-minutes">Telegram notification</label>
+                    <label htmlFor="event-telegram-minutes">{t("telegramNotification")}</label>
                     <div className="telegram-event-settings">
                       <div className="telegram-event-row">
-                        <span>Minutes before event</span>
+                        <span>{t("minutesBeforeEvent")}</span>
                         <input
                           id="event-telegram-minutes"
                           type="number"
@@ -1659,14 +1836,14 @@ function App() {
                             }))
                           }
                         />
-                        Notify all connected Telegram users
+                        {t("notifyAllTelegramUsers")}
                       </label>
 
                       {!eventForm.telegramNotifyAll && (
                         <div className="telegram-user-pick-list">
-                          <p>Select specific users with Telegram bot connected:</p>
+                          <p>{t("selectSpecificTelegramUsers")}</p>
                           {telegramConnectedUsers.length === 0 ? (
-                            <p className="event-description-empty">No connected Telegram users available.</p>
+                            <p className="event-description-empty">{t("noConnectedTelegramUsers")}</p>
                           ) : (
                             telegramConnectedUsers.map((entry) => (
                               <label key={entry.id} className="checkbox-wrap">
@@ -1684,7 +1861,7 @@ function App() {
                     </div>
                   </div>
                   <div className="event-form-actions">
-                    <button type="submit">{eventDialogMode === "create" ? "Create" : "Save"}</button>
+                    <button type="submit">{eventDialogMode === "create" ? t("create") : t("save")}</button>
                     {eventDialogMode === "edit" && selectedEvent?.id && (
                       <button
                         type="button"
@@ -1699,11 +1876,11 @@ function App() {
                           }
                         }}
                       >
-                        Delete
+                        {t("delete")}
                       </button>
                     )}
                     <button type="button" className="link-button" onClick={closeEventDialog}>
-                      Cancel
+                      {t("cancel")}
                     </button>
                   </div>
                 </form>
@@ -1714,19 +1891,19 @@ function App() {
               <>
                 <h3>{selectedEvent.title}</h3>
                 <p className="event-time-row">
-                  Starts: {formatDateTimeEu(selectedEvent.start, language)}
+                  {t("starts")}: {formatDateTimeEu(selectedEvent.start, language)}
                 </p>
                 <p className="event-time-row">
-                  Ends: {formatDateTimeEu(selectedEvent.end, language)}
+                  {t("ends")}: {formatDateTimeEu(selectedEvent.end, language)}
                 </p>
-                <h4>Description</h4>
+                <h4>{t("description")}</h4>
                 <LinkifiedText text={selectedEvent.notes} emptyText={t("noDescriptionProvided")} />
                 <div className="event-form-actions">
                   <button type="button" onClick={startEditingSelectedEvent}>
-                    Edit
+                    {t("edit")}
                   </button>
                   <button type="button" className="link-button" onClick={closeEventDialog}>
-                    Close
+                    {t("close")}
                   </button>
                 </div>
               </>
@@ -1739,18 +1916,18 @@ function App() {
         <section className="calendar-card">
           <h3>Management</h3>
           {settingsLoading || adminLoading ? (
-            <p>Loading...</p>
+            <p>{t("loading")}</p>
           ) : (
             <>
-              <h4>User Management</h4>
+              <h4>{t("userManagement")}</h4>
               <div className="admin-grid">
-                <div className="admin-grid-head">Email</div>
-                <div className="admin-grid-head">Password (new)</div>
-                <div className="admin-grid-head">Approved</div>
-                <div className="admin-grid-head">Admin</div>
-                <div className="admin-grid-head">Telegram</div>
+                <div className="admin-grid-head">{t("email")}</div>
+                <div className="admin-grid-head">{t("passwordNew")}</div>
+                <div className="admin-grid-head">{t("approved")}</div>
+                <div className="admin-grid-head">{t("admin")}</div>
+                <div className="admin-grid-head">{t("telegram")}</div>
                 <div className="admin-grid-head">Timezone</div>
-                <div className="admin-grid-head">Actions</div>
+                <div className="admin-grid-head">{t("actions")}</div>
 
                 {users.map((entry) => (
                   <Fragment key={entry.id}>
@@ -1761,7 +1938,7 @@ function App() {
                     <input
                       type="password"
                       minLength={6}
-                      placeholder="Leave blank to keep"
+                      placeholder={t("leaveBlankToKeep")}
                       value={entry.newPassword || ""}
                       onChange={(e) => updateUserDraft(entry.id, { newPassword: e.target.value })}
                     />
@@ -1771,7 +1948,7 @@ function App() {
                         checked={Boolean(entry.isApproved)}
                         onChange={(e) => updateUserDraft(entry.id, { isApproved: e.target.checked })}
                       />
-                      Approved
+                      {t("approved")}
                     </label>
                     <label className="checkbox-wrap">
                       <input
@@ -1779,18 +1956,18 @@ function App() {
                         checked={Boolean(entry.isAdmin)}
                         onChange={(e) => updateUserDraft(entry.id, { isAdmin: e.target.checked })}
                       />
-                      Admin
+                      {t("admin")}
                     </label>
                     <div className="admin-telegram-cell">
                       <span className={entry.telegramStatus === "connected" ? "status-connected" : "status-not-connected"}>
-                        {entry.telegramStatus === "connected" ? "Connected" : "Not connected"}
+                        {entry.telegramStatus === "connected" ? t("connected") : t("notConnected")}
                       </span>
                     </div>
                     <div className="timezone-input-wrap">
                       <input
                         value={entry.timezone || "UTC"}
                         onChange={(e) => updateUserDraft(entry.id, { timezone: e.target.value })}
-                        placeholder="Search timezone"
+                        placeholder={t("searchTimezone")}
                         list="timezone-options"
                       />
                       <button
@@ -1798,7 +1975,7 @@ function App() {
                         className="link-button"
                         onClick={() => updateUserDraft(entry.id, { timezone: detectBrowserTimezone() })}
                       >
-                        Use system
+                        {t("useSystem")}
                       </button>
                     </div>
                     <div className="admin-row-actions">
@@ -1811,7 +1988,7 @@ function App() {
                         disabled={entry.telegramStatus !== "connected"}
                         onClick={() => openAdminTelegramMessageDialog(entry)}
                       >
-                        Send Telegram
+                        {t("sendTelegram")}
                       </button>
                     </div>
                   </Fragment>
@@ -1819,52 +1996,42 @@ function App() {
               </div>
 
               <h4>{t("translationManagement")}</h4>
-              <div className="settings-grid">
-                <div className="settings-actions">
-                  <button type="button" onClick={exportTranslationsFile}>
-                    {t("exportTranslations")}
-                  </button>
-                </div>
-                <label htmlFor="translations-import-file">{t("importTranslations")}</label>
-                <input id="translations-import-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={importTranslationsFile} />
-                <div className="settings-actions">
-                  <button type="button" onClick={saveImportedTranslations}>
-                    {t("saveImportedTranslations")}
-                  </button>
-                </div>
-                <div className="admin-grid">
-                  <div className="admin-grid-head">Key</div>
-                  <div className="admin-grid-head">EN</div>
-                  <div className="admin-grid-head">RU</div>
-                  {translationsRows.map((row) => (
-                    <Fragment key={row.key}>
-                      <div>{row.key}</div>
-                      <div>{row.en}</div>
-                      <div>{row.ru}</div>
-                    </Fragment>
-                  ))}
-                </div>
+              <div className="settings-actions">
+                <button type="button" onClick={exportTranslationsFile}>
+                  {t("exportTranslations")}
+                </button>
+                <button type="button" onClick={openTranslationsImportPicker}>
+                  {t("importTranslations")}
+                </button>
+                <input
+                  ref={translationsImportInputRef}
+                  id="translations-import-file"
+                  type="file"
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                  onChange={importTranslationsFile}
+                  style={{ display: "none" }}
+                />
               </div>
 
-              <h4>Telegram bot settings</h4>
+              <h4>{t("telegramBotSettings")}</h4>
               <div className="settings-grid">
-                <label htmlFor="bot-token">Bot key</label>
+                <label htmlFor="bot-token">{t("botKey")}</label>
                 <input
                   id="bot-token"
                   type="password"
-                  placeholder={telegramAdmin.hasBotToken ? "Saved (enter to replace)" : "Enter bot token"}
+                  placeholder={telegramAdmin.hasBotToken ? t("savedEnterReplace") : t("enterBotToken")}
                   value={telegramAdmin.botToken}
                   onChange={(e) => setTelegramAdmin((current) => ({ ...current, botToken: e.target.value }))}
                 />
 
-                <label htmlFor="bot-name">Bot name</label>
+                <label htmlFor="bot-name">{t("botName")}</label>
                 <input
                   id="bot-name"
                   value={telegramAdmin.botName}
                   onChange={(e) => setTelegramAdmin((current) => ({ ...current, botName: e.target.value }))}
                 />
 
-                <label htmlFor="bot-link">Bot link</label>
+                <label htmlFor="bot-link">{t("botLink")}</label>
                 <input
                   id="bot-link"
                   placeholder="https://t.me/your_bot"
@@ -1874,7 +2041,7 @@ function App() {
 
                 <div className="settings-actions">
                   <button type="button" onClick={saveTelegramAdminSettings}>
-                    Save Telegram settings
+                    {t("saveTelegramSettings")}
                   </button>
                 </div>
               </div>
@@ -1885,73 +2052,73 @@ function App() {
 
       {activePage === "settings" && (
         <section className="calendar-card">
-          <h3>User Settings</h3>
+          <h3>{t("userSettings")}</h3>
           {settingsLoading ? (
-            <p>Loading settings...</p>
+            <p>{t("loadingSettings")}</p>
           ) : (
             <>
               <section className="telegram-subscription-block">
-                <h4>Telegram notifications</h4>
-                <p>Connect your Telegram chat to receive notifications.</p>
+                <h4>{t("telegramNotifications")}</h4>
+                <p>{t("connectTelegramInstruction")}</p>
                 <ol>
                   <li>
-                    Open the bot:{" "}
+                    {t("openBot")}:{" "}
                     {telegramUser.botLink ? (
                       <a href={telegramUser.botLink} target="_blank" rel="noreferrer">
                         {telegramUser.botLink}
                       </a>
                     ) : (
-                      <span>Bot link not configured by admin yet.</span>
+                      <span>{t("botLinkNotConfigured")}</span>
                     )}
                   </li>
                   <li>
-                    Send <code>/start {telegramUser.generatedId || '"generated id"'}</code> in the chat.
+                    {t("sendStart")} <code>/start {telegramUser.generatedId || '"generated id"'}</code> {t("inChat")}
                     <button type="button" className="copy-telegram-button" onClick={copyTelegramStartMessage}>
-                      Copy message
+                      {t("copyMessage")}
                     </button>
                   </li>
                   <li>
-                    After sending message from step 2
+                    {t("afterSendingMessage")}
                     <button type="button" className="verify-telegram-button" onClick={verifyTelegramSubscription} disabled={!telegramUser.hasBotToken || !telegramUser.generatedId}>
-                      Verify connection
+                      {t("verifyConnection")}
                     </button>
                   </li>
                 </ol>
                 <p>
-                  Status: <strong>{telegramUser.status}</strong>
+                  {t("status")}: <strong>{telegramUser.status}</strong>
                 </p>
                 <button type="button" onClick={generateTelegramId}>
-                  {telegramUser.generatedId ? "Regenerate subscription id" : "Generate subscription id"}
+                  {telegramUser.generatedId ? t("regenerateSubscriptionId") : t("generateSubscriptionId")}
                 </button>
               </section>
 
               <section className="password-block">
-                <h4>Time zone</h4>
+                <h4>{t("timeZone")}</h4>
                 <form className="settings-grid" onSubmit={saveOwnTimezone}>
-                  <label htmlFor="timezone">IANA Timezone</label>
+                  <label htmlFor="timezone">{t("ianaTimezone")}</label>
                   <div className="timezone-input-wrap">
                     <input
                       id="timezone"
                       value={timezoneFormValue}
                       onChange={(e) => setTimezoneFormValue(e.target.value)}
-                      placeholder="Search timezone"
+                      placeholder={t("searchTimezone")}
                       list="timezone-options"
                       required
                     />
                     <button type="button" className="link-button" onClick={() => setTimezoneFormValue(detectBrowserTimezone())}>
-                      Use current system timezone
+                      {t("useCurrentSystemTimezone")}
                     </button>
                   </div>
                   <div className="settings-actions">
-                    <button type="submit">Save timezone</button>
+                    <button type="submit">{t("saveTimezone")}</button>
                   </div>
                 </form>
               </section>
 
               <section className="password-block">
-                <h4>Change password</h4>
+                <h4>{t("changePassword")}</h4>
                 <form className="settings-grid" onSubmit={changeOwnPassword}>
-                  <label htmlFor="current-password">Current password</label>
+                  <label htmlFor="current-password">{t("currentPassword")}</label>
                   <input
                     id="current-password"
                     type="password"
@@ -1965,7 +2132,7 @@ function App() {
                     required
                   />
 
-                  <label htmlFor="new-password">New password</label>
+                  <label htmlFor="new-password">{t("newPassword")}</label>
                   <input
                     id="new-password"
                     type="password"
@@ -1981,7 +2148,7 @@ function App() {
                   />
 
                   <div className="settings-actions">
-                    <button type="submit">Change password</button>
+                    <button type="submit">{t("changePasswordBtn")}</button>
                   </div>
                 </form>
               </section>
@@ -1993,12 +2160,12 @@ function App() {
       {telegramMessageDialogOpen && (
         <div className="modal-overlay" role="presentation">
           <section className="modal-card" role="dialog" aria-modal="true">
-            <h3>Send Telegram notification</h3>
+            <h3>{t("sendTelegramNotification")}</h3>
             <p>
-              User: <strong>{adminTelegramMessage.userEmail}</strong>
+              {t("user")}: <strong>{adminTelegramMessage.userEmail}</strong>
             </p>
             <form onSubmit={sendAdminTelegramMessage} className="settings-grid">
-              <label htmlFor="admin-telegram-message">Message</label>
+              <label htmlFor="admin-telegram-message">{t("message")}</label>
               <textarea
                 id="admin-telegram-message"
                 rows={5}
@@ -2009,12 +2176,12 @@ function App() {
                     message: e.target.value,
                   }))
                 }
-                placeholder="Enter message to send"
+                placeholder={t("enterMessageToSend")}
                 required
               />
 
               <div className="settings-actions event-form-actions">
-                <button type="submit">Send</button>
+                <button type="submit">{t("send")}</button>
                 <button type="button" className="link-button" onClick={closeAdminTelegramMessageDialog}>
                   Cancel
                 </button>
