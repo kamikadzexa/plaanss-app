@@ -6,6 +6,8 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const crypto = require("crypto");
+const multer = require("multer");
+const XLSX = require("xlsx");
 
 const app = express();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -14,6 +16,27 @@ const PORT = process.env.PORT || 8000;
 const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-production";
 const COOKIE_NAME = "plaanss_auth";
 const COOKIE_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
+const SUPPORTED_LANGUAGES = ["en", "ru"];
+const DEFAULT_LANGUAGE = "en";
+
+const DEFAULT_TRANSLATIONS = {
+  "notification.event.reminder": {
+    en: "🔔 {{title}} starts in *{{minutes}} minutes to its beginning*\n{{notes}}\n{{startLabel}} ({{timezone}})",
+    ru: "🔔 {{title}} начнётся через *{{minutes}} мин*\n{{notes}}\n{{startLabel}} ({{timezone}})",
+  },
+  "notification.event.unknownTime": {
+    en: "unknown time",
+    ru: "время неизвестно",
+  },
+  "notification.event.noDescription": {
+    en: "No description",
+    ru: "Без описания",
+  },
+  "notification.telegram.connected": {
+    en: "Connection successful ✅ Telegram notifications are enabled.",
+    ru: "Подключение успешно ✅ Уведомления Telegram включены.",
+  },
+};
 
 const allowedOrigin = process.env.CORS_ORIGIN || true;
 
@@ -25,6 +48,7 @@ app.use(
 );
 app.use(cookieParser());
 app.use(express.json());
+const upload = multer({ storage: multer.memoryStorage() });
 
 const issueToken = (user) => jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
 
@@ -179,14 +203,65 @@ const normalizeTimezone = (value) => {
   }
 };
 
-const formatEventNotificationMessage = (event, timezone) => {
+const normalizeLanguage = (value) => {
+  const language = `${value || ""}`.toLowerCase().trim();
+  return SUPPORTED_LANGUAGES.includes(language) ? language : DEFAULT_LANGUAGE;
+};
+
+const resolveLanguageFromHeader = (headerValue) => {
+  if (!headerValue) {
+    return DEFAULT_LANGUAGE;
+  }
+
+  const [firstChoice = ""] = headerValue.split(",");
+  const [code = ""] = firstChoice.trim().split(";");
+  const primaryCode = code.split("-")[0];
+  return normalizeLanguage(primaryCode);
+};
+
+const applyTemplate = (template, values) =>
+  template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, key) => `${values[key] ?? ""}`);
+
+const getTranslationsMap = async (client) => {
+  const target = client || pool;
+  const result = await target.query("SELECT translation_key, en_value, ru_value FROM translations");
+  const map = new Map();
+
+  result.rows.forEach((row) => {
+    map.set(row.translation_key, {
+      en: row.en_value || "",
+      ru: row.ru_value || "",
+    });
+  });
+
+  return map;
+};
+
+const getTranslationValue = (translationsMap, key, language) => {
+  const row = translationsMap.get(key) || DEFAULT_TRANSLATIONS[key];
+  if (!row) {
+    return "";
+  }
+
+  return row[language] || row.en || "";
+};
+
+const updateUserNotificationLanguage = async (userId, language) => {
+  const normalized = normalizeLanguage(language);
+  await pool.query("UPDATE users SET notification_language = $1 WHERE id = $2", [normalized, userId]);
+  return normalized;
+};
+
+
+const formatEventNotificationMessage = (event, timezone, language, translationsMap) => {
   const start = event.start_time ? new Date(event.start_time) : null;
   const safeTimezone = normalizeTimezone(timezone);
+  const safeLanguage = normalizeLanguage(language);
   const now = new Date();
   const minutesToStart = start && !Number.isNaN(start.getTime()) ? Math.max(0, Math.ceil((start.getTime() - now.getTime()) / 60000)) : 0;
   const startLabel =
     start && !Number.isNaN(start.getTime())
-      ? new Intl.DateTimeFormat("en-GB", {
+      ? new Intl.DateTimeFormat(safeLanguage === "ru" ? "ru-RU" : "en-GB", {
           year: "numeric",
           month: "2-digit",
           day: "2-digit",
@@ -195,9 +270,19 @@ const formatEventNotificationMessage = (event, timezone) => {
           hour12: false,
           timeZone: safeTimezone,
         }).format(start)
-      : "unknown time";
+      : getTranslationValue(translationsMap, "notification.event.unknownTime", safeLanguage);
 
-  return `🔔 ${event.title} starts in *${minutesToStart} minutes to its beginning*\n${event.notes || "No description"}\n${startLabel} (${safeTimezone})`;
+  const template =
+    getTranslationValue(translationsMap, "notification.event.reminder", safeLanguage) ||
+    DEFAULT_TRANSLATIONS["notification.event.reminder"].en;
+
+  return applyTemplate(template, {
+    title: event.title,
+    minutes: `${minutesToStart}`,
+    notes: event.notes || getTranslationValue(translationsMap, "notification.event.noDescription", safeLanguage),
+    startLabel,
+    timezone: safeTimezone,
+  });
 };
 
 const dispatchPendingEventNotifications = async () => {
@@ -228,13 +313,15 @@ const dispatchPendingEventNotifications = async () => {
       return;
     }
 
+    const translationsMap = await getTranslationsMap(client);
+
     for (const event of pendingResult.rows) {
       let recipientsQuery = null;
       let recipientsParams = [];
 
       if (event.telegram_notify_mode === "all") {
         recipientsQuery =
-          "SELECT telegram_chat_id, timezone FROM users WHERE is_approved = TRUE AND telegram_chat_id IS NOT NULL";
+          "SELECT telegram_chat_id, timezone, notification_language FROM users WHERE is_approved = TRUE AND telegram_chat_id IS NOT NULL";
       } else if (event.telegram_notify_mode === "specific") {
         const userIds = Array.isArray(event.telegram_notify_user_ids) ? event.telegram_notify_user_ids : [];
         if (!userIds.length) {
@@ -243,7 +330,7 @@ const dispatchPendingEventNotifications = async () => {
         }
 
         recipientsQuery =
-          "SELECT telegram_chat_id, timezone FROM users WHERE is_approved = TRUE AND telegram_chat_id IS NOT NULL AND id = ANY($1::int[])";
+          "SELECT telegram_chat_id, timezone, notification_language FROM users WHERE is_approved = TRUE AND telegram_chat_id IS NOT NULL AND id = ANY($1::int[])";
         recipientsParams = [userIds];
       }
 
@@ -257,7 +344,12 @@ const dispatchPendingEventNotifications = async () => {
 
       for (const recipient of recipientsResult.rows) {
         try {
-          const message = formatEventNotificationMessage(event, recipient.timezone);
+          const message = formatEventNotificationMessage(
+            event,
+            recipient.timezone,
+            recipient.notification_language,
+            translationsMap
+          );
           await sendTelegramMessage(botToken, recipient.telegram_chat_id, message);
         } catch (sendError) {
           console.error(`Telegram event notification failed for event ${event.id}:`, sendError.message);
@@ -291,7 +383,26 @@ const initDb = async () => {
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_subscription_token TEXT");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone TEXT DEFAULT 'UTC'");
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_language TEXT DEFAULT 'en'");
+  await pool.query("UPDATE users SET notification_language = 'en' WHERE notification_language IS NULL OR notification_language = ''");
   await pool.query("UPDATE users SET timezone = 'UTC' WHERE timezone IS NULL OR timezone = ''");
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS translations (
+      translation_key TEXT PRIMARY KEY,
+      en_value TEXT NOT NULL,
+      ru_value TEXT NOT NULL DEFAULT ''
+    )
+  `);
+
+  for (const [translationKey, values] of Object.entries(DEFAULT_TRANSLATIONS)) {
+    await pool.query(
+      `INSERT INTO translations (translation_key, en_value, ru_value)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (translation_key) DO NOTHING`,
+      [translationKey, values.en, values.ru]
+    );
+  }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS events (
@@ -370,8 +481,97 @@ app.get("/health", async (req, res) => {
   }
 });
 
+app.get("/i18n/translations", authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query("SELECT translation_key, en_value, ru_value FROM translations ORDER BY translation_key ASC");
+    return res.json({
+      items: result.rows.map((row) => ({
+        key: row.translation_key,
+        en: row.en_value,
+        ru: row.ru_value,
+      })),
+    });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to load translations" });
+  }
+});
+
+app.get("/admin/translations/export", authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query("SELECT translation_key, en_value, ru_value FROM translations ORDER BY translation_key ASC");
+    const rows = result.rows.map((row) => ({
+      key: row.translation_key,
+      en: row.en_value,
+      ru: row.ru_value,
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "translations");
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", 'attachment; filename="translations.xlsx"');
+    return res.send(buffer);
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to export translations" });
+  }
+});
+
+app.post("/admin/translations/import", authMiddleware, adminMiddleware, upload.single("file"), async (req, res) => {
+  if (!req.file?.buffer) {
+    return res.status(400).json({ error: "Excel file is required" });
+  }
+
+  let rows = [];
+
+  try {
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) {
+      return res.status(400).json({ error: "Excel file has no sheets" });
+    }
+
+    rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+  } catch (error) {
+    return res.status(400).json({ error: "Unable to parse Excel file" });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    for (const entry of rows) {
+      const key = `${entry?.key || ""}`.trim();
+      if (!key) {
+        continue;
+      }
+
+      const en = `${entry?.en || ""}`;
+      const ru = `${entry?.ru || ""}`;
+
+      await client.query(
+        `INSERT INTO translations (translation_key, en_value, ru_value)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (translation_key)
+         DO UPDATE SET en_value = EXCLUDED.en_value, ru_value = EXCLUDED.ru_value`,
+        [key, en, ru]
+      );
+    }
+
+    await client.query("COMMIT");
+    return res.status(204).send();
+  } catch (error) {
+    await client.query("ROLLBACK");
+    return res.status(500).json({ error: "Unable to import translations" });
+  } finally {
+    client.release();
+  }
+});
+
 app.post("/auth/register", async (req, res) => {
-  const { email, password, timezone } = req.body;
+  const { email, password, timezone, language } = req.body;
 
   if (!email || !password || password.length < 6) {
     return res.status(400).json({ error: "Email and password (min 6 chars) are required" });
@@ -379,6 +579,7 @@ app.post("/auth/register", async (req, res) => {
 
   const normalizedEmail = email.toLowerCase().trim();
   const normalizedTimezone = normalizeTimezone(timezone);
+  const normalizedLanguage = normalizeLanguage(language || req.headers["x-ui-language"] || resolveLanguageFromHeader(req.headers["accept-language"]));
 
   try {
     const userCountResult = await pool.query("SELECT COUNT(*)::int AS count FROM users");
@@ -386,10 +587,10 @@ app.post("/auth/register", async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password, 10);
     const result = await pool.query(
-      `INSERT INTO users (email, password_hash, is_admin, is_approved, timezone)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO users (email, password_hash, is_admin, is_approved, timezone, notification_language)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, email, is_admin, is_approved, timezone`,
-      [normalizedEmail, passwordHash, isFirstUser, isFirstUser, normalizedTimezone]
+      [normalizedEmail, passwordHash, isFirstUser, isFirstUser, normalizedTimezone, normalizedLanguage]
     );
 
     const user = result.rows[0];
@@ -439,6 +640,11 @@ app.post("/auth/login", async (req, res) => {
       return res.status(403).json({ error: "Your account is waiting for admin approval" });
     }
 
+    const requestedLanguage = normalizeLanguage(req.body?.language || req.headers["x-ui-language"] || resolveLanguageFromHeader(req.headers["accept-language"]));
+    if (requestedLanguage !== normalizeLanguage(user.notification_language)) {
+      await updateUserNotificationLanguage(user.id, requestedLanguage);
+    }
+
     const token = issueToken(user);
     res.cookie(COOKIE_NAME, token, buildAuthCookieOptions());
     return res.json({ token, user: sanitizeUser(user) });
@@ -448,6 +654,9 @@ app.post("/auth/login", async (req, res) => {
 });
 
 app.get("/auth/me", authMiddleware, async (req, res) => {
+  const requestedLanguage = normalizeLanguage(req.headers["x-ui-language"] || resolveLanguageFromHeader(req.headers["accept-language"]));
+  await updateUserNotificationLanguage(req.user.id, requestedLanguage);
+
   const result = await pool.query(
     "SELECT id, email, is_admin, is_approved, created_at, telegram_chat_id, timezone FROM users WHERE id = $1",
     [req.user.id]
@@ -926,7 +1135,14 @@ app.post("/user/telegram/verify", authMiddleware, async (req, res) => {
       [chatId, req.user.id]
     );
 
-    await sendTelegramMessage(settings.bot_token, chatId, "Connection successful ✅ Telegram notifications are enabled.");
+    const translationsMap = await getTranslationsMap();
+    const languageResult = await pool.query("SELECT notification_language FROM users WHERE id = $1", [req.user.id]);
+    const userLanguage = normalizeLanguage(languageResult.rows[0]?.notification_language);
+    const connectedText =
+      getTranslationValue(translationsMap, "notification.telegram.connected", userLanguage) ||
+      DEFAULT_TRANSLATIONS["notification.telegram.connected"].en;
+
+    await sendTelegramMessage(settings.bot_token, chatId, connectedText);
 
     return res.json({ linked: true, status: "Connected" });
   } catch (error) {
