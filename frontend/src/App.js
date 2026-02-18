@@ -122,6 +122,8 @@ const UI_TRANSLATIONS = {
     user: "User",
     message: "Message",
     enterMessageToSend: "Enter message to send",
+    attachImageOptional: "Attach image (optional)",
+    imageWillBeDeletedAfterSend: "Image is sent directly and not stored on the server.",
     send: "Send",
     cleanupOldEventImagesDone: "Old event images cleaned: {{events}} events, {{images}} images.",
     noFileSelected: "Select an Excel file first",
@@ -233,6 +235,8 @@ const UI_TRANSLATIONS = {
     user: "Пользователь",
     message: "Сообщение",
     enterMessageToSend: "Введите сообщение для отправки",
+    attachImageOptional: "Прикрепить изображение (необязательно)",
+    imageWillBeDeletedAfterSend: "Изображение отправляется сразу и не сохраняется на сервере.",
     send: "Отправить",
     cleanupOldEventImagesDone: "Старые изображения очищены: событий {{events}}, изображений {{images}}.",
     noFileSelected: "Сначала выберите файл Excel",
@@ -270,7 +274,7 @@ const blankTelegramInfo = {
   dailyNotificationsEnabled: false,
 };
 const blankTelegramAdmin = { botToken: "", botName: "", botLink: "", hasBotToken: false };
-const blankAdminTelegramMessage = { userId: "", userEmail: "", message: "" };
+const blankAdminTelegramMessage = { userId: "", userEmail: "", message: "", imageFile: null };
 const detectBrowserTimezone = () => {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -930,6 +934,7 @@ function App() {
       userId: `${entry.id}`,
       userEmail: entry.email,
       message: "",
+      imageFile: null,
     });
     setTelegramMessageDialogOpen(true);
   };
@@ -943,16 +948,26 @@ function App() {
     event.preventDefault();
 
     const message = adminTelegramMessage.message.trim();
-    if (!message) {
-      setError("Telegram message cannot be empty.");
+    const hasImage = Boolean(adminTelegramMessage.imageFile);
+
+    if (!message && !hasImage) {
+      setError("Telegram message or image is required.");
       return;
     }
 
     try {
+      const payload = new FormData();
+      if (message) {
+        payload.append("message", message);
+      }
+      if (adminTelegramMessage.imageFile) {
+        payload.append("image", adminTelegramMessage.imageFile);
+      }
+
       const response = await apiFetch(`/admin/users/${adminTelegramMessage.userId}/telegram-message`, {
         method: "POST",
-        headers: authHeader,
-        body: JSON.stringify({ message }),
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: payload,
       });
       const data = await parseJsonSafe(response);
 
@@ -2361,8 +2376,21 @@ function App() {
                   }))
                 }
                 placeholder={t("enterMessageToSend")}
-                required
               />
+
+              <label htmlFor="admin-telegram-image">{t("attachImageOptional")}</label>
+              <input
+                id="admin-telegram-image"
+                type="file"
+                accept="image/*"
+                onChange={(e) =>
+                  setAdminTelegramMessage((current) => ({
+                    ...current,
+                    imageFile: e.target.files?.[0] || null,
+                  }))
+                }
+              />
+              <small>{t("imageWillBeDeletedAfterSend")}</small>
 
               <div className="settings-actions event-form-actions">
                 <button type="submit">{t("send")}</button>
