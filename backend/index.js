@@ -226,6 +226,30 @@ const sendTelegramPhotoByFile = async (botToken, chatId, filePath, fileName = "a
   }
 };
 
+const sendTelegramPhotoByBuffer = async (botToken, chatId, buffer, fileName = "attachment.png", caption = "") => {
+  if (!buffer || !buffer.length) {
+    throw new Error("Image file is empty");
+  }
+
+  const formData = new FormData();
+  formData.append("chat_id", `${chatId}`);
+  formData.append("photo", new Blob([buffer]), fileName);
+  if (caption) {
+    formData.append("caption", `${caption}`.slice(0, 1024));
+  }
+
+  const response = await fetch(buildTelegramApiUrl(botToken, "sendPhoto"), {
+    method: "POST",
+    body: formData,
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.description || "Unable to send Telegram photo by file");
+  }
+};
+
 const extractImageReferencesFromNotes = (notes = "") => {
   const refs = [];
   const seen = new Set();
@@ -438,12 +462,35 @@ const formatDailyNotificationMessage = (events, timezone, language, translations
     timeZone: safeTimezone,
   });
 
-  const lines = events.map((event) =>
-    applyTemplate(itemTemplate, {
-      time: timeFormatter.format(new Date(event.start_time)),
-      title: event.title,
-    })
-  );
+  const dayFormatter = new Intl.DateTimeFormat(locale, {
+    weekday: "long",
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: safeTimezone,
+  });
+
+  const lines = [];
+  let previousDayLabel = "";
+
+  for (const event of events) {
+    const start = new Date(event.start_time);
+    const dayLabel = dayFormatter.format(start);
+
+    if (dayLabel !== previousDayLabel) {
+      if (lines.length) {
+        lines.push("");
+      }
+      lines.push(`*${dayLabel}*`);
+      previousDayLabel = dayLabel;
+    }
+
+    lines.push(
+      applyTemplate(itemTemplate, {
+        time: timeFormatter.format(start),
+        title: event.title,
+      })
+    );
+  }
 
   return `${heading}\n${lines.join("\n")}`;
 };
@@ -1316,16 +1363,23 @@ app.get("/telegram/connected-users", authMiddleware, async (req, res) => {
   }
 });
 
-app.post("/admin/users/:id/telegram-message", authMiddleware, adminMiddleware, async (req, res) => {
+app.post("/admin/users/:id/telegram-message", authMiddleware, adminMiddleware, upload.single("image"), async (req, res) => {
   const { id } = req.params;
   const message = `${req.body?.message || ""}`.trim();
+  const image = req.file || null;
+  const hasMessage = Boolean(message);
+  const hasImage = Boolean(image);
 
-  if (!message) {
-    return res.status(400).json({ error: "Message is required" });
+  if (!hasMessage && !hasImage) {
+    return res.status(400).json({ error: "Message or image is required" });
   }
 
-  if (message.length > 4000) {
+  if (hasMessage && message.length > 4000) {
     return res.status(400).json({ error: "Message is too long" });
+  }
+
+  if (hasImage && !/^image\//.test(image.mimetype || "")) {
+    return res.status(400).json({ error: "Only image files are allowed" });
   }
 
   try {
@@ -1348,7 +1402,12 @@ app.post("/admin/users/:id/telegram-message", authMiddleware, adminMiddleware, a
       return res.status(400).json({ error: "User has not connected Telegram bot" });
     }
 
-    await sendTelegramMessage(botToken, target.telegram_chat_id, message);
+    if (hasImage) {
+      const safeFileName = `${image.originalname || "attachment"}`.replace(/[^a-zA-Z0-9._-]/g, "_");
+      await sendTelegramPhotoByBuffer(botToken, target.telegram_chat_id, image.buffer, safeFileName, message);
+    } else {
+      await sendTelegramMessage(botToken, target.telegram_chat_id, message);
+    }
 
     return res.json({ success: true, sentTo: { id: target.id, email: target.email } });
   } catch (error) {
